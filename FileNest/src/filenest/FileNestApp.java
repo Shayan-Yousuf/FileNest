@@ -41,13 +41,14 @@ public class FileNestApp {
         fs.seedDemoData();
         frame = new JFrame("FileNest | Smart File System Simulator");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setMinimumSize(new Dimension(1050, 680));
-        frame.setLocationRelativeTo(null);
+        frame.setMinimumSize(new Dimension(900, 600));
         frame.setLayout(new BorderLayout());
         frame.add(buildHeader(), BorderLayout.NORTH);
         frame.add(buildMain(), BorderLayout.CENTER);
         frame.add(buildStatus(), BorderLayout.SOUTH);
         refreshAll();
+        frame.setLocationByPlatform(true);
+        frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
         frame.setVisible(true);
     }
 
@@ -84,8 +85,13 @@ public class FileNestApp {
 
     private JComponent buildMain() {
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, buildSidebar(), buildWorkspace());
-        split.setDividerLocation(245);
         split.setBorder(null);
+        split.setContinuousLayout(true);
+        split.setOneTouchExpandable(true);
+        split.setDividerSize(8);
+        split.setResizeWeight(0.22);
+        split.setDividerLocation(245);
+        split.setMinimumSize(new Dimension(700, 400));
         return split;
     }
 
@@ -93,6 +99,8 @@ public class FileNestApp {
         JPanel panel = new JPanel(new BorderLayout(5, 8));
         panel.setBorder(new EmptyBorder(12, 12, 12, 8));
         panel.setBackground(new Color(245, 247, 250));
+        panel.setMinimumSize(new Dimension(185, 300));
+        panel.setPreferredSize(new Dimension(245, 500));
         JLabel label = new JLabel("FOLDER STRUCTURE");
         label.setFont(new Font("SansSerif", Font.BOLD, 11));
         label.setForeground(new Color(75, 91, 112));
@@ -129,13 +137,14 @@ public class FileNestApp {
         panel.setBorder(new EmptyBorder(14, 10, 14, 14));
         panel.setBackground(Color.WHITE);
 
-        JPanel top = new JPanel(new BorderLayout());
+        JPanel top = new JPanel(new BorderLayout(8, 10));
         top.setOpaque(false);
         JLabel heading = new JLabel("File Explorer");
         heading.setFont(new Font("SansSerif", Font.BOLD, 20));
-        top.add(heading, BorderLayout.WEST);
+        top.add(heading, BorderLayout.NORTH);
 
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        // A fixed two-row toolbar prevents the action buttons from squeezing the file table.
+        JPanel actions = new JPanel(new GridLayout(2, 5, 7, 7));
         actions.setOpaque(false);
         JButton open = new JButton("Access");
         open.addActionListener(e -> accessSelected());
@@ -162,7 +171,7 @@ public class FileNestApp {
         load.addActionListener(e -> loadSnapshot());
         actions.add(open); actions.add(rename); actions.add(move); actions.add(delete); actions.add(undo);
         actions.add(cleanup); actions.add(history); actions.add(analytics); actions.add(save); actions.add(load);
-        top.add(actions, BorderLayout.EAST);
+        top.add(actions, BorderLayout.CENTER);
         panel.add(top, BorderLayout.NORTH);
 
         String[] columns = {"Name", "Type", "Size", "Last Accessed", "Access Count", "ID"};
@@ -170,11 +179,23 @@ public class FileNestApp {
             @Override public boolean isCellEditable(int row, int col) { return false; }
         };
         fileTable = new JTable(tableModel);
-        fileTable.setRowHeight(29);
-        fileTable.removeColumn(fileTable.getColumnModel().getColumn(5)); // Keep stable IDs hidden from the user.
+        fileTable.setRowHeight(32);
+        fileTable.setFillsViewportHeight(true);
         fileTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        fileTable.setShowGrid(false);
+        fileTable.setIntercellSpacing(new Dimension(0, 1));
+        fileTable.setAutoResizeMode(JTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS);
         fileTable.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 12));
-        panel.add(new JScrollPane(fileTable), BorderLayout.CENTER);
+        fileTable.getColumnModel().getColumn(0).setPreferredWidth(230);
+        fileTable.getColumnModel().getColumn(1).setPreferredWidth(75);
+        fileTable.getColumnModel().getColumn(2).setPreferredWidth(105);
+        fileTable.getColumnModel().getColumn(3).setPreferredWidth(165);
+        fileTable.getColumnModel().getColumn(4).setPreferredWidth(105);
+        fileTable.removeColumn(fileTable.getColumnModel().getColumn(5)); // Keep stable IDs hidden from the user.
+        JScrollPane tableScroll = new JScrollPane(fileTable);
+        tableScroll.setBorder(BorderFactory.createLineBorder(new Color(225, 231, 239)));
+        tableScroll.getViewport().setBackground(Color.WHITE);
+        panel.add(tableScroll, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new BorderLayout(8, 6));
         bottom.setOpaque(false);
