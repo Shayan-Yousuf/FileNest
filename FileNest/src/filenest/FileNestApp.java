@@ -10,6 +10,9 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -39,7 +42,7 @@ public class FileNestApp {
 
     private void show() {
         fs.seedDemoData();
-        frame = new JFrame("FileNest | Smart File System Simulator");
+        frame = new JFrame("FileNest | Real + Simulated File Manager");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setMinimumSize(new Dimension(900, 600));
         frame.setLayout(new BorderLayout());
@@ -144,13 +147,19 @@ public class FileNestApp {
         top.add(heading, BorderLayout.NORTH);
 
         // Simple actions are grouped in a compact two-row toolbar.
-        JPanel actions = new JPanel(new GridLayout(2, 6, 7, 7));
+        JPanel actions = new JPanel(new GridLayout(2, 7, 7, 7));
         actions.setOpaque(false);
-        JButton preview = new JButton("Preview");
-        preview.setToolTipText("View a file's simulated content");
+        JButton importFiles = new JButton("Import Files");
+        importFiles.setToolTipText("Copy files into FileNest or link to their original PC locations");
+        importFiles.addActionListener(e -> importFiles());
+        JButton browsePc = new JButton("Open PC File");
+        browsePc.setToolTipText("Choose any file on this PC, register it and open it");
+        browsePc.addActionListener(e -> browseAndOpenPcFile());
+        JButton preview = new JButton("Open / Preview");
+        preview.setToolTipText("Open real files in their default app or preview simulated files");
         preview.addActionListener(e -> previewSelected());
         JButton open = new JButton("Record Access");
-        open.setToolTipText("Update the file's recent-access history");
+        open.setToolTipText("Record access without opening the file");
         open.addActionListener(e -> accessSelected());
         JButton rename = new JButton("Rename");
         rename.addActionListener(e -> renameSelected());
@@ -173,8 +182,8 @@ public class FileNestApp {
         save.addActionListener(e -> saveSnapshot());
         JButton load = new JButton("Load");
         load.addActionListener(e -> loadSnapshot());
-        actions.add(preview); actions.add(open); actions.add(rename); actions.add(move); actions.add(delete); actions.add(undo);
-        actions.add(cleanup); actions.add(history); actions.add(analytics); actions.add(save); actions.add(load);
+        actions.add(importFiles); actions.add(browsePc); actions.add(preview); actions.add(open); actions.add(rename); actions.add(move); actions.add(delete);
+        actions.add(undo); actions.add(cleanup); actions.add(history); actions.add(analytics); actions.add(save); actions.add(load);
         top.add(actions, BorderLayout.CENTER);
         panel.add(top, BorderLayout.NORTH);
 
@@ -332,6 +341,11 @@ public class FileNestApp {
         FileRecord record = fs.records.get(node.id);
         if (record == null) { error("File details are unavailable."); return; }
 
+        if (record.physicalPath != null) {
+            openPhysicalFile(record);
+            return;
+        }
+
         JTextArea content = new JTextArea(record.content);
         content.setEditable(false);
         content.setLineWrap(true);
@@ -349,6 +363,75 @@ public class FileNestApp {
         previewPanel.setPreferredSize(new Dimension(650, 380));
         JOptionPane.showMessageDialog(frame, previewPanel, "File Preview", JOptionPane.PLAIN_MESSAGE);
         status("Previewing " + record.name + ".");
+    }
+
+    private void importFiles() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Select files to add to FileNest");
+        chooser.setMultiSelectionEnabled(true);
+        chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+        if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return;
+        File[] selected = chooser.getSelectedFiles();
+        if (selected.length == 0 && chooser.getSelectedFile() != null) selected = new File[]{chooser.getSelectedFile()};
+        Object[] choices = {"Copy into FileNest", "Keep original location (Direct Access)", "Cancel"};
+        int choice = JOptionPane.showOptionDialog(frame,
+                "How should FileNest manage these " + selected.length + " file(s)?",
+                "Import mode", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
+                null, choices, choices[0]);
+        if (choice < 0 || choice == 2) return;
+        boolean copy = choice == 0;
+        int added = 0;
+        try {
+            for (File source : selected) {
+                if (source.isFile()) {
+                    fs.addPhysicalFile(currentFolderId, source.toPath(), copy);
+                    added++;
+                }
+            }
+            refreshAll();
+            status(added + " real file(s) added to FileNest.");
+            JOptionPane.showMessageDialog(frame, added + " file(s) added successfully. Double-click a file or select it and press Open / Preview.",
+                    "Import complete", JOptionPane.INFORMATION_MESSAGE);
+        } catch (IOException | RuntimeException ex) {
+            refreshAll();
+            error("Import stopped: " + ex.getMessage());
+        }
+    }
+
+    private void browseAndOpenPcFile() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Browse this PC");
+        chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+        if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return;
+        try {
+            FileRecord record = fs.addPhysicalFile(currentFolderId, chooser.getSelectedFile().toPath(), false);
+            refreshAll();
+            openPhysicalFile(record);
+        } catch (IOException | RuntimeException ex) {
+            error("Could not add/open this file: " + ex.getMessage());
+        }
+    }
+
+    private void openPhysicalFile(FileRecord record) {
+        try {
+            Path path = Path.of(record.physicalPath);
+            if (!Files.exists(path)) {
+                error("This file is no longer available at its saved location:\n" + path);
+                return;
+            }
+            if (!Desktop.isDesktopSupported() || !Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                error("Windows default-app opening is not supported on this computer.");
+                return;
+            }
+            Desktop.getDesktop().open(path.toFile());
+            fs.access(record.id);
+            accessHistory.addFirst(record.name + "  •  " + formatTime(Instant.now()));
+            while (accessHistory.size() > 30) accessHistory.removeLast();
+            refreshTable();
+            status("Opened " + record.name + " in its default application; access recorded.");
+        } catch (IOException | UnsupportedOperationException ex) {
+            error("Could not open file: " + ex.getMessage());
+        }
     }
 
     private FsNode selectedNode() {
@@ -562,11 +645,18 @@ public class FileNestApp {
 
     private static class FileRecord {
         String id, name, folderId, fingerprint, content;
+        String physicalPath;
+        boolean managedCopy;
         long size, accessCount, version;
         Instant lastAccess;
         FileRecord(String id, String name, String folderId, long size, String content) {
             this.id=id; this.name=name; this.folderId=folderId; this.size=size; this.content=content;
             this.lastAccess=Instant.now(); this.accessCount=0; this.fingerprint=hashContent(content);
+        }
+        FileRecord(String id, String name, String folderId, long size, String content, String physicalPath, boolean managedCopy, String fingerprint) {
+            this(id, name, folderId, size, content);
+            this.physicalPath=physicalPath; this.managedCopy=managedCopy;
+            if (fingerprint != null) this.fingerprint=fingerprint;
         }
     }
 
@@ -664,6 +754,55 @@ public class FileNestApp {
 
         FileRecord createFile(String folderId, String name, long size) {
             return createFile(folderId, name, size, "Simulated file content for " + UUID.randomUUID());
+        }
+
+        FileRecord addPhysicalFile(String folderId, Path source, boolean copy) throws IOException {
+            Path original = source.toAbsolutePath().normalize();
+            if (!Files.isRegularFile(original) || !Files.isReadable(original))
+                throw new IOException("Select a readable file.");
+            FolderNode folder = requireFolder(folderId);
+            Path stored = original;
+            if (copy) {
+                Path storage = Path.of(System.getProperty("user.home"), "FileNest_Storage");
+                Files.createDirectories(storage);
+                String fileName = original.getFileName().toString();
+                Path destination = storage.resolve(fileName);
+                String base = fileName;
+                String extension = "";
+                int dot = fileName.lastIndexOf('.');
+                if (dot > 0) { base = fileName.substring(0, dot); extension = fileName.substring(dot); }
+                int suffix = 1;
+                while (Files.exists(destination)) destination = storage.resolve(base + "_" + suffix++ + extension);
+                Files.copy(original, destination, StandardCopyOption.COPY_ATTRIBUTES);
+                stored = destination.toAbsolutePath().normalize();
+            }
+            String name = stored.getFileName().toString();
+            validateName(name);
+            if (folder.children.containsKey(name)) throw new IllegalArgumentException("A file or folder named '" + name + "' already exists in this FileNest folder.");
+            long size = Files.size(stored);
+            if (totalSize() + size > capacityBytes) throw new IllegalArgumentException("The FileNest 10 GB simulated capacity would be exceeded.");
+            String fingerprint = hashPhysicalFile(stored);
+            String id = UUID.randomUUID().toString();
+            FileNode node = new FileNode(id, name, folder);
+            folder.addChild(node);
+            FileRecord record = new FileRecord(id, name, folderId, size, "", stored.toString(), copy, fingerprint);
+            registerFile(record, node);
+            undoStack.push(() -> { folder.removeChild(name); unregisterFile(record); detachedRecords.remove(record.id); });
+            return record;
+        }
+
+        private String hashPhysicalFile(Path file) throws IOException {
+            try {
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                try (InputStream in = Files.newInputStream(file)) {
+                    byte[] buffer = new byte[8192];
+                    int read;
+                    while ((read = in.read(buffer)) != -1) digest.update(buffer, 0, read);
+                }
+                return HexFormat.of().formatHex(digest.digest());
+            } catch (NoSuchAlgorithmException ex) {
+                throw new IllegalStateException("SHA-256 is unavailable.", ex);
+            }
         }
 
         FileRecord createFile(String folderId, String name, long size, String content) {
@@ -872,7 +1011,7 @@ public class FileNestApp {
 
         void save(File file) throws IOException {
             try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(file)))) {
-                out.writeUTF("FILENEST"); out.writeInt(3); out.writeLong(capacityBytes);
+                out.writeUTF("FILENEST"); out.writeInt(4); out.writeLong(capacityBytes);
                 writeFolder(out, root);
                 out.writeInt(lru.size());
                 for (String id : lru.keySet()) out.writeUTF(id);
@@ -887,6 +1026,8 @@ public class FileNestApp {
                     FileRecord r = records.get(node.id);
                     out.writeUTF(r.id); out.writeUTF(r.name); out.writeLong(r.size); writeContent(out, r.content);
                     out.writeLong(r.accessCount); out.writeLong(r.lastAccess.toEpochMilli());
+                    out.writeUTF(r.physicalPath == null ? "" : r.physicalPath);
+                    out.writeBoolean(r.managedCopy);
                 }
             }
         }
@@ -894,11 +1035,11 @@ public class FileNestApp {
             FileSystemManager parsed = new FileSystemManager();
             try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
                 if (!"FILENEST".equals(in.readUTF())) throw new IOException("Not a FileNest save file.");
-                int version = in.readInt(); if (version != 3) throw new IOException("Unsupported save version: " + version);
+                int version = in.readInt(); if (version != 3 && version != 4) throw new IOException("Unsupported save version: " + version);
                 in.readLong();
                 String rootId = in.readUTF(); String rootName = in.readUTF(); int rootCount = in.readInt();
                 if (!parsed.root.id.equals(rootId) || !parsed.root.name.equals(rootName)) throw new IOException("Invalid root folder in save file.");
-                parsed.readFolderEntries(in, parsed.root, rootCount);
+                parsed.readFolderEntries(in, parsed.root, rootCount, version);
                 int lruCount = in.readInt();
                 if (lruCount != parsed.records.size()) throw new IOException("Invalid LRU index in save file.");
                 List<String> savedOrder = new ArrayList<>(); Set<String> seen = new HashSet<>();
@@ -936,22 +1077,29 @@ public class FileNestApp {
             byte[] bytes = new byte[length]; in.readFully(bytes);
             return new String(bytes, StandardCharsets.UTF_8);
         }
-        private void readFolder(DataInputStream in, FolderNode folder) throws IOException {
+        private void readFolder(DataInputStream in, FolderNode folder, int version) throws IOException {
             int count = in.readInt();
-            readFolderEntries(in, folder, count);
+            readFolderEntries(in, folder, count, version);
         }
-        private void readFolderEntries(DataInputStream in, FolderNode folder, int count) throws IOException {
+        private void readFolderEntries(DataInputStream in, FolderNode folder, int count, int version) throws IOException {
             for (int i=0; i<count; i++) {
                 boolean isFolder = in.readBoolean();
                 if (isFolder) {
                     String id=in.readUTF(), name=in.readUTF();
                     FolderNode child=new FolderNode(id,name,folder); folder.addChild(child); folders.put(id,child);
-                    readFolder(in,child);
+                    readFolder(in,child,version);
                 } else {
                     String id=in.readUTF(), name=in.readUTF(); long size=in.readLong(); String content=readContent(in);
                     long accesses=in.readLong(), epoch=in.readLong();
+                    String physicalPath = version >= 4 ? in.readUTF() : "";
+                    boolean managedCopy = version >= 4 && in.readBoolean();
                     FileNode node=new FileNode(id,name,folder); folder.addChild(node);
-                    FileRecord r=new FileRecord(id,name,folder.id,size,content); r.accessCount=accesses; r.lastAccess=Instant.ofEpochMilli(epoch);
+                    FileRecord r;
+                    if (!physicalPath.isEmpty()) {
+                        String fingerprint = Files.exists(Path.of(physicalPath)) ? hashPhysicalFile(Path.of(physicalPath)) : hashContent(content);
+                        r = new FileRecord(id,name,folder.id,size,content,physicalPath,managedCopy,fingerprint);
+                    } else r=new FileRecord(id,name,folder.id,size,content);
+                    r.accessCount=accesses; r.lastAccess=Instant.ofEpochMilli(epoch);
                     registerFile(r,node);
                 }
             }
