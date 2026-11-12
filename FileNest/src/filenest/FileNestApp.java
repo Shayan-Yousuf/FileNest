@@ -143,10 +143,14 @@ public class FileNestApp {
         heading.setFont(new Font("SansSerif", Font.BOLD, 20));
         top.add(heading, BorderLayout.NORTH);
 
-        // A fixed two-row toolbar prevents the action buttons from squeezing the file table.
-        JPanel actions = new JPanel(new GridLayout(2, 5, 7, 7));
+        // Simple actions are grouped in a compact two-row toolbar.
+        JPanel actions = new JPanel(new GridLayout(2, 6, 7, 7));
         actions.setOpaque(false);
-        JButton open = new JButton("Access");
+        JButton preview = new JButton("Preview");
+        preview.setToolTipText("View a file's simulated content");
+        preview.addActionListener(e -> previewSelected());
+        JButton open = new JButton("Record Access");
+        open.setToolTipText("Update the file's recent-access history");
         open.addActionListener(e -> accessSelected());
         JButton rename = new JButton("Rename");
         rename.addActionListener(e -> renameSelected());
@@ -157,19 +161,19 @@ public class FileNestApp {
         JButton undo = new JButton("Undo");
         undo.addActionListener(e -> {
             if (fs.canUndo()) { fs.undo(); refreshAll(); status("Last operation undone."); }
-            else status("There is no operation to undo.");
+            else status("Nothing to undo yet.");
         });
-        JButton cleanup = new JButton("Smart Cleanup");
+        JButton cleanup = new JButton("Cleanup Tips");
         cleanup.addActionListener(e -> showCleanup());
-        JButton history = new JButton("LRU History");
+        JButton history = new JButton("Access History");
         history.addActionListener(e -> showHistory());
-        JButton analytics = new JButton("Analytics");
+        JButton analytics = new JButton("Quick Analyze");
         analytics.addActionListener(e -> showAnalytics());
         JButton save = new JButton("Save");
         save.addActionListener(e -> saveSnapshot());
         JButton load = new JButton("Load");
         load.addActionListener(e -> loadSnapshot());
-        actions.add(open); actions.add(rename); actions.add(move); actions.add(delete); actions.add(undo);
+        actions.add(preview); actions.add(open); actions.add(rename); actions.add(move); actions.add(delete); actions.add(undo);
         actions.add(cleanup); actions.add(history); actions.add(analytics); actions.add(save); actions.add(load);
         top.add(actions, BorderLayout.CENTER);
         panel.add(top, BorderLayout.NORTH);
@@ -182,6 +186,12 @@ public class FileNestApp {
         fileTable.setRowHeight(32);
         fileTable.setFillsViewportHeight(true);
         fileTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        fileTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) previewSelected();
+            }
+        });
+        fileTable.setToolTipText("Double-click a file to preview its content.");
         fileTable.setShowGrid(false);
         fileTable.setIntercellSpacing(new Dimension(0, 1));
         fileTable.setAutoResizeMode(JTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS);
@@ -306,6 +316,41 @@ public class FileNestApp {
         status("Access recorded for " + file.name + " (LRU updated in O(1) average time).");
     }
 
+    private void previewSelected() {
+        FsNode node = selectedNode();
+        if (node == null) return;
+
+        if (node instanceof FolderNode folder) {
+            String details = "Folder: " + folder.name
+                    + "\nFiles inside: " + fs.countFiles(folder)
+                    + "\nSubfolders: " + fs.countFolders(folder)
+                    + "\nTotal size: " + formatBytes(fs.folderSize(folder));
+            JOptionPane.showMessageDialog(frame, details, "Folder Details", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        FileRecord record = fs.records.get(node.id);
+        if (record == null) { error("File details are unavailable."); return; }
+
+        JTextArea content = new JTextArea(record.content);
+        content.setEditable(false);
+        content.setLineWrap(true);
+        content.setWrapStyleWord(true);
+        content.setCaretPosition(0);
+        content.setFont(new Font("Monospaced", Font.PLAIN, 13));
+
+        JLabel details = new JLabel("  " + record.name + "     •     " + formatBytes(record.size)
+                + "     •     Accessed " + record.accessCount + " time(s)");
+        details.setBorder(new EmptyBorder(8, 4, 8, 4));
+
+        JPanel previewPanel = new JPanel(new BorderLayout(6, 6));
+        previewPanel.add(details, BorderLayout.NORTH);
+        previewPanel.add(new JScrollPane(content), BorderLayout.CENTER);
+        previewPanel.setPreferredSize(new Dimension(650, 380));
+        JOptionPane.showMessageDialog(frame, previewPanel, "File Preview", JOptionPane.PLAIN_MESSAGE);
+        status("Previewing " + record.name + ".");
+    }
+
     private FsNode selectedNode() {
         int row = fileTable.getSelectedRow();
         if (row < 0) { error("Select a file or folder first."); return null; }
@@ -394,23 +439,45 @@ public class FileNestApp {
     }
 
     private void showAnalytics() {
-        StringBuilder b = new StringBuilder("STORAGE ANALYTICS\n\n");
-        b.append("Used: ").append(formatBytes(fs.totalSize())).append(" / ").append(formatBytes(fs.capacityBytes)).append('\n');
-        b.append("Files: ").append(fs.records.size()).append("\nFolders: ").append(fs.folders.size()-1).append("\n");
+        long used = fs.totalSize();
+        long free = Math.max(0, fs.capacityBytes - used);
+        int percent = (int) Math.min(100, Math.round(100.0 * used / fs.capacityBytes));
+
         List<FileRecord> largest = new ArrayList<>(fs.records.values());
         largest.sort(Comparator.comparingLong((FileRecord r) -> r.size).reversed());
-        b.append("\nLargest files:\n");
-        for (int i=0; i<Math.min(5, largest.size()); i++) b.append(i+1).append(". ").append(largest.get(i).name)
-                .append(" — ").append(formatBytes(largest.get(i).size)).append('\n');
-        b.append("\nFolder usage:\n");
-        Map<String, Long> folderSizes = fs.folderSizes();
-        for (FolderNode folder : fs.folders.values()) if (folder != fs.root)
-            b.append(fs.folderPath(folder)).append(" — ").append(formatBytes(folderSizes.getOrDefault(folder.id, 0L))).append('\n');
         List<FileRecord> duplicates = fs.findDuplicates();
-        b.append("\nExact-content duplicate files: ").append(duplicates.size()).append('\n');
-        for (FileRecord r : duplicates) b.append("• ").append(r.name).append(" [").append(r.id.substring(0,8)).append("]\n");
-        JTextArea area = new JTextArea(b.toString(), 24, 55); area.setEditable(false); area.setCaretPosition(0);
-        JOptionPane.showMessageDialog(frame, new JScrollPane(area), "Storage Analytics", JOptionPane.INFORMATION_MESSAGE);
+
+        StringBuilder report = new StringBuilder("YOUR STORAGE SUMMARY\n\n");
+        report.append("Storage used: ").append(formatBytes(used)).append(" of ")
+                .append(formatBytes(fs.capacityBytes)).append(" (").append(percent).append("%)\n");
+        report.append("Space available: ").append(formatBytes(free)).append("\n");
+        report.append("Files: ").append(fs.records.size()).append("     Folders: ")
+                .append(Math.max(0, fs.folders.size() - 1)).append("\n\n");
+
+        if (!largest.isEmpty()) {
+            FileRecord biggest = largest.get(0);
+            report.append("Largest file: ").append(biggest.name).append(" (")
+                    .append(formatBytes(biggest.size)).append(")\n");
+        } else {
+            report.append("Largest file: No files yet\n");
+        }
+
+        report.append("Exact duplicate files: ").append(duplicates.size()).append("\n\n");
+        report.append("QUICK TIPS\n");
+        if (percent >= 80) report.append("• Storage is getting full. Review large files before adding more.\n");
+        else report.append("• You have plenty of storage space available.\n");
+        if (!duplicates.isEmpty()) report.append("• Check duplicate files to see whether you still need each copy.\n");
+        if (largest.size() > 1) report.append("• Preview large files before deciding whether to keep them.\n");
+        report.append("• Cleanup Tips only suggests old files; it does not delete anything automatically.");
+
+        JTextArea area = new JTextArea(report.toString(), 18, 48);
+        area.setEditable(false);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setCaretPosition(0);
+        area.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        JOptionPane.showMessageDialog(frame, new JScrollPane(area), "Quick Storage Analysis",
+                JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void saveSnapshot() {
