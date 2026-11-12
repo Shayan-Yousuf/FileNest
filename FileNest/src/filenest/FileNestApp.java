@@ -527,7 +527,7 @@ public class FileNestApp {
     }
 
     private static class FileSystemManager {
-        final long capacityBytes = 1024L * 1024 * 1024;
+        final long capacityBytes = 10L * 1024 * 1024 * 1024;
         final FolderNode root = new FolderNode("root", "Home", null);
         final Map<String, FolderNode> folders = new HashMap<>();
         final Map<String, FileRecord> records = new HashMap<>();
