@@ -456,7 +456,9 @@ public class FileNestApp {
     private static class FolderNode extends FsNode {
         // HashMap provides average O(1) name lookup; TreeMap keeps display/traversal sorted.
         final Map<String, FsNode> children = new HashMap<>();
-        final NavigableMap<String, FsNode> sortedChildren = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        final NavigableMap<String, FsNode> sortedChildren = new TreeMap<>(
+                Comparator.comparing((String name) -> name.toLowerCase(Locale.ROOT))
+                        .thenComparing(Comparator.naturalOrder()));
 
         FolderNode(String id, String name, FolderNode parent) { super(id, name, parent); }
 
@@ -778,12 +780,12 @@ public class FileNestApp {
 
         int countFiles(FolderNode folder) {
             int count = 0;
-            for (FsNode n : folder.children.values()) count += n instanceof FileNode ? 1 : countFiles((FolderNode)n);
+            for (FsNode n : folder.sortedChildren.values()) count += n instanceof FileNode ? 1 : countFiles((FolderNode)n);
             return count;
         }
         int countFolders(FolderNode folder) {
             int count = 0;
-            for (FsNode n : folder.children.values()) if (n instanceof FolderNode f) count += 1 + countFolders(f);
+            for (FsNode n : folder.sortedChildren.values()) if (n instanceof FolderNode f) count += 1 + countFolders(f);
             return count;
         }
 
