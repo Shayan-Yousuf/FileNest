@@ -65,7 +65,7 @@ public class FileNestApp {
         JLabel title = new JLabel("FileNest");
         title.setForeground(Color.WHITE);
         title.setFont(new Font("SansSerif", Font.BOLD, 25));
-        JLabel sub = new JLabel("SMART FILE SYSTEM SIMULATOR  •  JAVA + DSA");
+        JLabel sub = new JLabel("REAL + SIMULATED PC FILE MANAGER  •  JAVA + DSA");
         sub.setForeground(new Color(185, 203, 225));
         sub.setFont(new Font("SansSerif", Font.PLAIN, 10));
         brand.add(title);
@@ -271,7 +271,7 @@ public class FileNestApp {
         for (FsNode node : folder.sortedChildren.values()) {
             if (node instanceof FileNode f) {
                 FileRecord r = fs.records.get(f.id);
-                tableModel.addRow(new Object[]{f.name, "File", formatBytes(r.size), formatTime(r.lastAccess), r.accessCount, f.id});
+                tableModel.addRow(new Object[]{f.name, r.physicalPath == null ? "File" : (r.managedCopy ? "PC Copy" : "PC Link"), formatBytes(r.size), formatTime(r.lastAccess), r.accessCount, f.id});
             } else if (node instanceof FolderNode f) {
                 tableModel.addRow(new Object[]{f.name, "Folder", formatBytes(fs.folderSize(f)), "—", "—", f.id});
             }
@@ -491,7 +491,7 @@ public class FileNestApp {
         List<FileRecord> results = fs.searchPrefix(query);
         tableModel.setRowCount(0);
         for (FileRecord r : results) {
-            tableModel.addRow(new Object[]{r.name, "File", formatBytes(r.size), formatTime(r.lastAccess), r.accessCount, r.id});
+            tableModel.addRow(new Object[]{r.name, r.physicalPath == null ? "File" : (r.managedCopy ? "PC Copy" : "PC Link"), formatBytes(r.size), formatTime(r.lastAccess), r.accessCount, r.id});
         }
         status(results.size() + " result(s) for prefix \"" + query + "\" (Trie search).");
     }
@@ -761,6 +761,12 @@ public class FileNestApp {
             if (!Files.isRegularFile(original) || !Files.isReadable(original))
                 throw new IOException("Select a readable file.");
             FolderNode folder = requireFolder(folderId);
+            if (!copy) {
+                String originalPath = original.toString();
+                for (FileRecord existing : records.values()) {
+                    if (originalPath.equals(existing.physicalPath)) return existing;
+                }
+            }
             Path stored = original;
             if (copy) {
                 Path storage = Path.of(System.getProperty("user.home"), "FileNest_Storage");
