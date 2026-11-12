@@ -232,7 +232,7 @@ public class FileNestApp {
     }
 
     private void addFolderNodes(DefaultMutableTreeNode parent, FolderNode folder) {
-        for (FsNode child : folder.children.values()) {
+        for (FsNode child : folder.sortedChildren.values()) {
             if (child instanceof FolderNode f) {
                 DefaultMutableTreeNode swingNode = new DefaultMutableTreeNode(new FolderRef(f.id, f.name));
                 parent.add(swingNode);
@@ -249,7 +249,7 @@ public class FileNestApp {
         tableModel.setRowCount(0);
         FolderNode folder = fs.folders.get(currentFolderId);
         if (folder == null) { currentFolderId = "root"; folder = fs.root; }
-        for (FsNode node : folder.children.values()) {
+        for (FsNode node : folder.sortedChildren.values()) {
             if (node instanceof FileNode f) {
                 FileRecord r = fs.records.get(f.id);
                 tableModel.addRow(new Object[]{f.name, "File", formatBytes(r.size), formatTime(r.lastAccess), r.accessCount, f.id});
@@ -454,8 +454,30 @@ public class FileNestApp {
 
     /** N-ary tree node. HashMap-like child index gives average O(1) child lookup. */
     private static class FolderNode extends FsNode {
-        Map<String, FsNode> children = new LinkedHashMap<>();
+        // HashMap provides average O(1) name lookup; TreeMap keeps display/traversal sorted.
+        final Map<String, FsNode> children = new HashMap<>();
+        final NavigableMap<String, FsNode> sortedChildren = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
         FolderNode(String id, String name, FolderNode parent) { super(id, name, parent); }
+
+        void addChild(FsNode node) {
+            children.put(node.name, node);
+            sortedChildren.put(node.name, node);
+        }
+
+        FsNode removeChild(String name) {
+            sortedChildren.remove(name);
+            return children.remove(name);
+        }
+
+        void clearChildren() {
+            children.clear();
+            sortedChildren.clear();
+        }
+
+        void addAllChildren(Map<String, FsNode> nodes) {
+            for (FsNode node : nodes.values()) addChild(node);
+        }
     }
 
     private static class FileNode extends FsNode {
@@ -565,9 +587,9 @@ public class FileNestApp {
             FolderNode parent = requireFolder(parentId);
             if (parent.children.containsKey(name)) throw new IllegalArgumentException("A file or folder with that name already exists.");
             FolderNode folder = new FolderNode(UUID.randomUUID().toString(), name, parent);
-            parent.children.put(name, folder);
+            parent.addChild(folder);
             folders.put(folder.id, folder);
-            undoStack.push(() -> { parent.children.remove(name); folders.remove(folder.id); });
+            undoStack.push(() -> { parent.removeChild(name); folders.remove(folder.id); });
             return folder;
         }
 
@@ -584,10 +606,10 @@ public class FileNestApp {
             if (totalSize() + size > capacityBytes) throw new IllegalArgumentException("Not enough simulated storage space.");
             String id = UUID.randomUUID().toString();
             FileNode node = new FileNode(id, name, folder);
-            folder.children.put(name, node);
+            folder.addChild(node);
             FileRecord r = new FileRecord(id, name, folderId, size, content);
             registerFile(r, node);
-            undoStack.push(() -> { folder.children.remove(name); unregisterFile(r); detachedRecords.remove(r.id); });
+            undoStack.push(() -> { folder.removeChild(name); unregisterFile(r); detachedRecords.remove(r.id); });
             return r;
         }
 
@@ -599,9 +621,9 @@ public class FileNestApp {
             if (parent.children.containsKey(newName)) throw new IllegalArgumentException("A file or folder with that name already exists here.");
             String oldName = node.name;
             FileRecord r = node instanceof FileNode ? requireRecord(id) : null;
-            parent.children.remove(oldName);
+            parent.removeChild(oldName);
             node.name = newName;
-            parent.children.put(newName, node);
+            parent.addChild(node);
             if (r != null) { nameIndex.remove(oldName, id); r.name = newName; nameIndex.insert(newName, id); }
             undoStack.push(() -> renameInternal(node, oldName));
         }
@@ -680,7 +702,7 @@ public class FileNestApp {
             List<FsNode> subtree = new ArrayList<>();
             collectNodes(node, subtree);
             List<String> previousLruOrder = new ArrayList<>(lru.keySet());
-            parent.children.remove(name);
+            parent.removeChild(name);
             for (FsNode item : subtree) {
                 if (item instanceof FileNode) {
                     FileRecord record = requireRecord(item.id);
@@ -689,7 +711,7 @@ public class FileNestApp {
                 } else folders.remove(item.id);
             }
             undoStack.push(() -> {
-                parent.children.put(name, node);
+                parent.addChild(node);
                 for (FsNode item : subtree) {
                     if (item instanceof FolderNode folder) folders.put(folder.id, folder);
                     else {
@@ -710,7 +732,7 @@ public class FileNestApp {
         private void collectNodes(FsNode node, List<FsNode> out) {
             out.add(node);
             if (node instanceof FolderNode folder)
-                for (FsNode child : folder.children.values()) collectNodes(child, out);
+                for (FsNode child : folder.sortedChildren.values()) collectNodes(child, out);
         }
 
         private void registerFile(FileRecord r, FileNode node) {
@@ -732,9 +754,9 @@ public class FileNestApp {
 
         private void renameInternal(FsNode node, String newName) {
             FolderNode parent = node.parent;
-            parent.children.remove(node.name);
+            parent.removeChild(node.name);
             node.name = newName;
-            parent.children.put(newName, node);
+            parent.addChild(node);
             if (node instanceof FileNode) {
                 FileRecord r = records.get(node.id);
                 if (r != null) { nameIndex.remove(r.name, r.id); r.name = newName; nameIndex.insert(newName, r.id); }
@@ -742,8 +764,8 @@ public class FileNestApp {
         }
 
         private void moveInternal(FsNode node, FolderNode destination) {
-            node.parent.children.remove(node.name);
-            destination.children.put(node.name, node);
+            node.parent.removeChild(node.name);
+            destination.addChild(node);
             node.parent = destination;
             if (node instanceof FileNode) {
                 FileRecord r = records.get(node.id);
@@ -789,7 +811,7 @@ public class FileNestApp {
         }
         private void writeFolder(DataOutputStream out, FolderNode folder) throws IOException {
             out.writeUTF(folder.id); out.writeUTF(folder.name); out.writeInt(folder.children.size());
-            for (FsNode node : folder.children.values()) {
+            for (FsNode node : folder.sortedChildren.values()) {
                 out.writeBoolean(node instanceof FolderNode);
                 if (node instanceof FolderNode child) writeFolder(out, child);
                 else {
@@ -821,7 +843,7 @@ public class FileNestApp {
             } catch (EOFException ex) { throw new IOException("Save file is incomplete or corrupted.", ex); }
             // Adopt only after the complete snapshot has parsed, so a bad file cannot wipe the current session.
             reset();
-            root.children.putAll(parsed.root.children);
+            root.addAllChildren(parsed.root.children);
             for (FsNode child : root.children.values()) child.parent = root;
             folders.putAll(parsed.folders);
             folders.put(root.id, root);
@@ -854,19 +876,19 @@ public class FileNestApp {
                 boolean isFolder = in.readBoolean();
                 if (isFolder) {
                     String id=in.readUTF(), name=in.readUTF();
-                    FolderNode child=new FolderNode(id,name,folder); folder.children.put(name,child); folders.put(id,child);
+                    FolderNode child=new FolderNode(id,name,folder); folder.addChild(child); folders.put(id,child);
                     readFolder(in,child);
                 } else {
                     String id=in.readUTF(), name=in.readUTF(); long size=in.readLong(); String content=readContent(in);
                     long accesses=in.readLong(), epoch=in.readLong();
-                    FileNode node=new FileNode(id,name,folder); folder.children.put(name,node);
+                    FileNode node=new FileNode(id,name,folder); folder.addChild(node);
                     FileRecord r=new FileRecord(id,name,folder.id,size,content); r.accessCount=accesses; r.lastAccess=Instant.ofEpochMilli(epoch);
                     registerFile(r,node);
                 }
             }
         }
         private void reset() {
-            root.children.clear(); folders.clear(); folders.put(root.id,root); records.clear();
+            root.clearChildren(); folders.clear(); folders.put(root.id,root); records.clear();
             nameIndex.clear(); lru.clear(); minHeap.clear(); duplicateIndex.clear(); detachedRecords.clear(); undoStack.clear();
         }
 
@@ -907,7 +929,7 @@ public class FileNestApp {
         }
         private long calculateFolderSizes(FolderNode folder, Map<String, Long> sizes) {
             long total = 0;
-            for (FsNode child : folder.children.values()) {
+            for (FsNode child : folder.sortedChildren.values()) {
                 if (child instanceof FileNode f) total += records.get(f.id).size;
                 else if (child instanceof FolderNode f) total += calculateFolderSizes(f, sizes);
             }
@@ -917,7 +939,7 @@ public class FileNestApp {
 
         long folderSize(FolderNode folder) {
             long total = 0;
-            for (FsNode child : folder.children.values()) {
+            for (FsNode child : folder.sortedChildren.values()) {
                 if (child instanceof FileNode f) total += records.get(f.id).size;
                 else if (child instanceof FolderNode f) total += folderSize(f);
             }
