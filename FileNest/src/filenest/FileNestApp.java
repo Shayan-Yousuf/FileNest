@@ -256,7 +256,13 @@ public class FileNestApp {
         return candidates.get(0);
     }
 
+    private boolean isImageFile(File file) {
+        String name = file.getName().toLowerCase(Locale.ROOT);
+        return name.matches(".*\\.(png|jpe?g|gif|bmp|wbmp|tif|tiff)$");
+    }
+
     private ImageIcon getThumbnail(File file, int width, int height) {
+        if (file == null || !file.isFile() || !isImageFile(file)) return null;
         String cacheKey = file.getAbsolutePath() + "|" + file.lastModified() + "|" + width + "x" + height;
         if (thumbnailCache.containsKey(cacheKey)) return thumbnailCache.get(cacheKey);
         try {
