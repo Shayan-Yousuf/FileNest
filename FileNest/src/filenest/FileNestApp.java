@@ -36,6 +36,8 @@ public class FileNestApp {
     private JTextField searchField;
     private JLabel pathLabel, previewIcon, previewName, previewMeta, previewHint;
     private JButton previewOpenButton;
+    private JButton themeToggleButton;
+    private boolean darkTheme = true;
     private String currentFolderId = "root";
     private final Deque<String> accessHistory = new ArrayDeque<>();
 
@@ -53,6 +55,7 @@ public class FileNestApp {
         frame.add(buildHeader(), BorderLayout.NORTH);
         frame.add(buildMain(), BorderLayout.CENTER);
         frame.add(buildStatus(), BorderLayout.SOUTH);
+        applyTheme();
         refreshAll();
         frame.setLocationByPlatform(true);
         frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
@@ -91,7 +94,17 @@ public class FileNestApp {
         searchField.addActionListener(e -> searchFiles());
         search.add(searchField, BorderLayout.CENTER);
         search.add(searchButton, BorderLayout.EAST);
-        header.add(search, BorderLayout.EAST);
+        themeToggleButton = createButton("☀ Light mode", false);
+        themeToggleButton.setToolTipText("Switch between dark and light appearance");
+        themeToggleButton.addActionListener(e -> {
+            darkTheme = !darkTheme;
+            applyTheme();
+        });
+        JPanel headerActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        headerActions.setOpaque(false);
+        headerActions.add(search);
+        headerActions.add(themeToggleButton);
+        header.add(headerActions, BorderLayout.EAST);
         return header;
     }
 
@@ -151,8 +164,10 @@ public class FileNestApp {
                     boolean expanded, boolean leaf, int row, boolean hasFocus) {
                 JLabel label = (JLabel) super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
                 label.setOpaque(true);
-                label.setBackground(selected ? new Color(35, 65, 96) : new Color(37, 37, 37));
-                label.setForeground(selected ? new Color(135, 195, 255) : new Color(205, 220, 238));
+                label.setBackground(selected ? (darkTheme ? new Color(35, 65, 96) : new Color(205, 228, 250))
+                        : (darkTheme ? new Color(37, 37, 37) : new Color(250, 252, 255)));
+                label.setForeground(selected ? new Color(35, 125, 215)
+                        : (darkTheme ? new Color(205, 220, 238) : new Color(45, 65, 88)));
                 label.setBorder(new EmptyBorder(3, 4, 3, 4));
                 return label;
             }
@@ -323,8 +338,10 @@ public class FileNestApp {
                 boolean folder = node instanceof FolderNode;
                 label.setText((folder ? "   ▰   " : "   ▧   ") + name);
                 label.setFont(new Font("SansSerif", Font.PLAIN, 13));
-                label.setForeground(selected ? new Color(125, 190, 255) : (folder ? new Color(105, 175, 255) : new Color(215, 225, 238)));
-                label.setBackground(selected ? new Color(38, 65, 92) : new Color(43, 43, 43));
+                label.setForeground(selected ? new Color(35, 125, 215)
+                        : (folder ? new Color(45, 135, 220) : (darkTheme ? new Color(215, 225, 238) : new Color(45, 55, 70))));
+                label.setBackground(selected ? (darkTheme ? new Color(38, 65, 92) : new Color(205, 228, 250))
+                        : (darkTheme ? new Color(43, 43, 43) : Color.WHITE));
                 label.setBorder(new EmptyBorder(0, 8, 0, 8));
                 label.setOpaque(true);
                 return label;
@@ -447,6 +464,71 @@ public class FileNestApp {
         card.setBackground(new Color(43, 43, 43));
         card.setBorder(BorderFactory.createEmptyBorder());
         return card;
+    }
+
+    private void applyTheme() {
+        if (frame == null) return;
+        Color background = darkTheme ? new Color(29, 29, 29) : new Color(242, 246, 251);
+        Color panel = darkTheme ? new Color(36, 36, 36) : new Color(255, 255, 255);
+        Color surface = darkTheme ? new Color(43, 43, 43) : new Color(250, 252, 255);
+        Color foreground = darkTheme ? new Color(225, 230, 238) : new Color(35, 48, 65);
+        Color muted = darkTheme ? new Color(155, 165, 178) : new Color(100, 115, 132);
+        Color border = darkTheme ? new Color(55, 62, 72) : new Color(215, 224, 235);
+        applyThemeTo(frame.getContentPane(), background, panel, surface, foreground, muted, border);
+        frame.getContentPane().setBackground(background);
+        if (themeToggleButton != null) {
+            themeToggleButton.setText(darkTheme ? "☀ Light mode" : "☾ Dark mode");
+            themeToggleButton.setBackground(new Color(45, 125, 210));
+            themeToggleButton.setForeground(Color.WHITE);
+        }
+        if (fileTable != null) {
+            fileTable.setBackground(surface);
+            fileTable.setForeground(foreground);
+            fileTable.setSelectionBackground(darkTheme ? new Color(38, 65, 92) : new Color(205, 228, 250));
+            fileTable.setSelectionForeground(darkTheme ? new Color(135, 195, 255) : new Color(30, 95, 165));
+        }
+        if (folderTree != null) {
+            folderTree.setBackground(surface);
+            folderTree.setForeground(foreground);
+        }
+        if (storageBar != null) {
+            storageBar.setBackground(darkTheme ? new Color(55, 55, 55) : new Color(220, 229, 239));
+            storageBar.setForeground(new Color(45, 135, 220));
+        }
+        frame.repaint();
+    }
+
+    private void applyThemeTo(Component component, Color background, Color panel, Color surface,
+            Color foreground, Color muted, Color border) {
+        if (component instanceof JSplitPane split) split.setBackground(background);
+        if (component instanceof JPanel p) {
+            Color old = p.getBackground();
+            if (old != null && old.getRed() < 80 && old.getGreen() < 80 && old.getBlue() < 80) p.setBackground(panel);
+            else p.setBackground(surface);
+        } else if (component instanceof JLabel label) {
+            String text = label.getText() == null ? "" : label.getText();
+            label.setForeground(text.equals("PREVIEW") || text.matches("[A-Z ]{3,}") ? muted : foreground);
+        } else if (component instanceof JButton button) {
+            if (button != themeToggleButton) {
+                button.setBackground(darkTheme ? new Color(49, 54, 63) : new Color(231, 239, 248));
+                button.setForeground(darkTheme ? new Color(150, 195, 245) : new Color(35, 105, 175));
+                button.setBorder(BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(border), new EmptyBorder(7, 11, 7, 11)));
+            }
+        } else if (component instanceof JTextField field) {
+            field.setBackground(surface); field.setForeground(foreground);
+            field.setCaretColor(foreground);
+        } else if (component instanceof JProgressBar bar) {
+            bar.setBackground(darkTheme ? new Color(55, 55, 55) : new Color(220, 229, 239));
+            bar.setForeground(new Color(45, 135, 220));
+        } else if (component instanceof JScrollPane scroll) {
+            scroll.setBackground(surface);
+            scroll.getViewport().setBackground(surface);
+        }
+        if (component instanceof Container container) {
+            for (Component child : container.getComponents())
+                applyThemeTo(child, background, panel, surface, foreground, muted, border);
+        }
     }
 
     private void styleScrollPane(JScrollPane scroll) {
