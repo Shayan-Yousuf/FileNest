@@ -473,7 +473,7 @@ public class FileNestApp {
         }
         String id = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(row), 5));
         FsNode node;
-        try { node = fs.findNodeForUi(id); } catch (RuntimeException ex) { return; }
+        try { node = fs.findNode(id); } catch (RuntimeException ex) { return; }
         if (node instanceof FolderNode folder) {
             previewIcon.setIcon(null); previewIcon.setText("📁");
             previewName.setText(folder.name);
