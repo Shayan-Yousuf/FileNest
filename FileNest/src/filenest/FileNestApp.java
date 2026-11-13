@@ -167,7 +167,10 @@ public class FileNestApp {
 
         JPanel treeArea = new JPanel(new BorderLayout());
         treeArea.setOpaque(false);
-        treeArea.add(new JScrollPane(folderTree), BorderLayout.CENTER);
+        JScrollPane folderScroll = new JScrollPane(folderTree);
+        styleScrollPane(folderScroll);
+        folderScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        treeArea.add(folderScroll, BorderLayout.CENTER);
         upper.add(treeArea);
         panel.add(upper, BorderLayout.CENTER);
 
