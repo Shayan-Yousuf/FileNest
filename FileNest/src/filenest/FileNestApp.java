@@ -150,7 +150,7 @@ public class FileNestApp {
             @Override public Component getTreeCellRendererComponent(JTree tree, Object value, boolean selected,
                     boolean expanded, boolean leaf, int row, boolean hasFocus) {
                 JLabel label = (JLabel) super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
-                label.setOpaque(selected);
+                label.setOpaque(true);
                 label.setBackground(selected ? new Color(35, 65, 96) : new Color(37, 37, 37));
                 label.setForeground(selected ? new Color(135, 195, 255) : new Color(205, 220, 238));
                 label.setBorder(new EmptyBorder(3, 4, 3, 4));
