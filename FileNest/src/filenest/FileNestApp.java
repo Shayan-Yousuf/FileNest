@@ -100,7 +100,8 @@ public class FileNestApp {
         split.setBorder(null);
         split.setContinuousLayout(true);
         split.setOneTouchExpandable(true);
-        split.setDividerSize(8);
+        split.setDividerSize(5);
+        split.setBackground(new Color(29, 29, 29));
         split.setResizeWeight(0.20);
         split.setDividerLocation(218);
         split.setMinimumSize(new Dimension(700, 400));
@@ -142,7 +143,7 @@ public class FileNestApp {
         folderTree.setShowsRootHandles(true);
         folderTree.setRowHeight(27);
         folderTree.setBackground(new Color(37, 37, 37));
-        folderTree.setForeground(new Color(220, 220, 220));
+        folderTree.setForeground(new Color(135, 190, 250));
         folderTree.setFont(new Font("SansSerif", Font.PLAIN, 12));
         folderTree.setBorder(new EmptyBorder(5, 2, 5, 2));
         folderTree.setCellRenderer(new DefaultTreeCellRenderer() {
@@ -150,8 +151,8 @@ public class FileNestApp {
                     boolean expanded, boolean leaf, int row, boolean hasFocus) {
                 JLabel label = (JLabel) super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
                 label.setOpaque(selected);
-                label.setBackground(selected ? new Color(67, 67, 67) : new Color(37, 37, 37));
-                label.setForeground(new Color(225, 225, 225));
+                label.setBackground(selected ? new Color(35, 65, 96) : new Color(37, 37, 37));
+                label.setForeground(selected ? new Color(135, 195, 255) : new Color(205, 220, 238));
                 label.setBorder(new EmptyBorder(3, 4, 3, 4));
                 return label;
             }
@@ -267,8 +268,8 @@ public class FileNestApp {
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         actions.setOpaque(false);
         JButton[] buttons = {
-            createButton("Import", true), createButton("Open PC File", false),
-            createButton("Open", false), createButton("Rename", false),
+            createButton("Import", false), createButton("Open PC File", false),
+            createButton("Rename", false),
             createButton("Move", false), createButton("Delete", false),
             createButton("Undo", false), createButton("Cleanup", false),
             createButton("History", false), createButton("Analyze", false),
@@ -276,16 +277,15 @@ public class FileNestApp {
         };
         buttons[0].addActionListener(e -> importFiles());
         buttons[1].addActionListener(e -> browseAndOpenPcFile());
-        buttons[2].addActionListener(e -> previewSelected());
-        buttons[3].addActionListener(e -> renameSelected());
-        buttons[4].addActionListener(e -> moveSelected());
-        buttons[5].addActionListener(e -> deleteSelected());
-        buttons[6].addActionListener(e -> { if (fs.canUndo()) { fs.undo(); refreshAll(); status("Last operation undone."); } else status("Nothing to undo yet."); });
-        buttons[7].addActionListener(e -> showCleanup());
-        buttons[8].addActionListener(e -> showHistory());
-        buttons[9].addActionListener(e -> showAnalytics());
-        buttons[10].addActionListener(e -> saveSnapshot());
-        buttons[11].addActionListener(e -> loadSnapshot());
+        buttons[2].addActionListener(e -> renameSelected());
+        buttons[3].addActionListener(e -> moveSelected());
+        buttons[4].addActionListener(e -> deleteSelected());
+        buttons[5].addActionListener(e -> { if (fs.canUndo()) { fs.undo(); refreshAll(); status("Last operation undone."); } else status("Nothing to undo yet."); });
+        buttons[6].addActionListener(e -> showCleanup());
+        buttons[7].addActionListener(e -> showHistory());
+        buttons[8].addActionListener(e -> showAnalytics());
+        buttons[9].addActionListener(e -> saveSnapshot());
+        buttons[10].addActionListener(e -> loadSnapshot());
         for (JButton button : buttons) actions.add(button);
         top.add(actions, BorderLayout.CENTER);
         panel.add(top, BorderLayout.NORTH);
@@ -325,8 +325,8 @@ public class FileNestApp {
                 boolean folder = node instanceof FolderNode;
                 label.setText((folder ? "   ▰   " : "   ▧   ") + name);
                 label.setFont(new Font("SansSerif", Font.PLAIN, 13));
-                label.setForeground(selected ? Color.WHITE : (folder ? new Color(244, 194, 65) : new Color(222, 222, 222)));
-                label.setBackground(selected ? new Color(66, 66, 66) : new Color(43, 43, 43));
+                label.setForeground(selected ? new Color(125, 190, 255) : (folder ? new Color(105, 175, 255) : new Color(215, 225, 238)));
+                label.setBackground(selected ? new Color(38, 65, 92) : new Color(43, 43, 43));
                 label.setBorder(new EmptyBorder(0, 8, 0, 8));
                 label.setOpaque(true);
                 return label;
@@ -364,7 +364,7 @@ public class FileNestApp {
         previewBody.setOpaque(false);
         previewBody.setLayout(new BoxLayout(previewBody, BoxLayout.Y_AXIS));
         previewIcon = new JLabel("▧", SwingConstants.CENTER);
-        previewIcon.setForeground(new Color(245, 190, 55));
+        previewIcon.setForeground(new Color(90, 165, 255));
         previewIcon.setFont(new Font("SansSerif", Font.PLAIN, 76));
         previewIcon.setPreferredSize(new Dimension(320, 230));
         previewIcon.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -380,7 +380,8 @@ public class FileNestApp {
         previewHint.setForeground(new Color(135, 135, 135));
         previewHint.setFont(new Font("SansSerif", Font.PLAIN, 11));
         previewHint.setAlignmentX(Component.CENTER_ALIGNMENT);
-        previewOpenButton = createButton("Open file", true);
+        previewOpenButton = createButton("Open file", false);
+        previewOpenButton.setVisible(false);
         previewOpenButton.setAlignmentX(Component.CENTER_ALIGNMENT);
         previewOpenButton.addActionListener(e -> previewSelected());
         previewBody.add(Box.createVerticalGlue());
@@ -398,7 +399,8 @@ public class FileNestApp {
 
         JSplitPane contentSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, listCard, previewCard);
         contentSplit.setBorder(null);
-        contentSplit.setDividerSize(8);
+        contentSplit.setDividerSize(5);
+        contentSplit.setBackground(new Color(29, 29, 29));
         contentSplit.setResizeWeight(0.52);
         contentSplit.setDividerLocation(0.52);
         panel.add(contentSplit, BorderLayout.CENTER);
@@ -410,7 +412,7 @@ public class FileNestApp {
         storageLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
         storageBar = new JProgressBar(0, 100);
         storageBar.setStringPainted(true);
-        storageBar.setForeground(new Color(242, 190, 55));
+        storageBar.setForeground(new Color(65, 145, 235));
         storageBar.setBorderPainted(false);
         storageBar.setBackground(new Color(55, 55, 55));
         bottom.add(storageLabel, BorderLayout.NORTH);
@@ -423,11 +425,11 @@ public class FileNestApp {
         JButton button = new JButton(text);
         button.setFocusPainted(false);
         button.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(primary ? new Color(242, 190, 55) : new Color(68, 68, 68)),
+                BorderFactory.createLineBorder(primary ? new Color(65, 145, 235) : new Color(68, 75, 86)),
                 new EmptyBorder(7, 11, 7, 11)));
         button.setFont(new Font("SansSerif", Font.BOLD, 11));
-        button.setBackground(primary ? new Color(242, 190, 55) : new Color(55, 55, 55));
-        button.setForeground(primary ? new Color(30, 30, 30) : new Color(225, 225, 225));
+        button.setBackground(primary ? new Color(65, 145, 235) : new Color(49, 54, 63));
+        button.setForeground(primary ? Color.WHITE : new Color(135, 190, 250));
         button.setOpaque(true);
         button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         return button;
@@ -445,14 +447,18 @@ public class FileNestApp {
     private JPanel darkCard(LayoutManager layout) {
         JPanel card = new JPanel(layout);
         card.setBackground(new Color(43, 43, 43));
-        card.setBorder(BorderFactory.createLineBorder(new Color(52, 52, 52)));
+        card.setBorder(BorderFactory.createEmptyBorder());
         return card;
     }
 
     private void styleScrollPane(JScrollPane scroll) {
         scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.setBackground(new Color(43, 43, 43));
         scroll.getViewport().setBackground(new Color(43, 43, 43));
         scroll.getVerticalScrollBar().setUnitIncrement(16);
+        scroll.getVerticalScrollBar().setBackground(new Color(43, 43, 43));
+        scroll.getVerticalScrollBar().setForeground(new Color(65, 145, 235));
+        scroll.getHorizontalScrollBar().setBackground(new Color(43, 43, 43));
     }
 
     private void JTableHeaderStyle(JTable table) {
@@ -524,6 +530,7 @@ public class FileNestApp {
             previewName.setText("Choose a file");
             previewMeta.setText("File information will appear here");
             previewHint.setText("Select an item from the list");
+            previewOpenButton.setVisible(false);
             return;
         }
         String id = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(row), 5));
@@ -534,6 +541,7 @@ public class FileNestApp {
             previewName.setText(folder.name);
             previewMeta.setText(fs.countFiles(folder) + " files  •  " + formatBytes(fs.folderSize(folder)));
             previewHint.setText("Folder");
+            previewOpenButton.setVisible(false);
             return;
         }
         FileRecord record = fs.records.get(id);
@@ -554,9 +562,10 @@ public class FileNestApp {
         } else {
             previewIcon.setText(lower.endsWith(".pdf") ? "PDF" : (lower.matches(".*\\.(mp4|mkv|avi|mov)$") ? "▶" : "▤"));
             previewIcon.setFont(new Font("SansSerif", Font.BOLD, 62));
-            previewIcon.setForeground(new Color(242, 190, 55));
+            previewIcon.setForeground(new Color(90, 165, 255));
         }
         previewHint.setText(record.physicalPath == null ? "Simulated content" : "Opens with your PC's default app");
+        previewOpenButton.setVisible(true);
     }
 
     private void refreshStorage() {
