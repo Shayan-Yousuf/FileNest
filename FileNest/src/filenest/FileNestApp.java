@@ -135,7 +135,7 @@ public class FileNestApp {
         upper.setLayout(new BoxLayout(upper, BoxLayout.Y_AXIS));
         JLabel tabs = sidebarHeading("WORKSPACE");
         upper.add(tabs);
-        upper.add(sidebarButton("⌂   Home", () -> { currentFolderId = "root"; refreshAll(); }));
+        upper.add(sidebarButton("⌂   Home", () -> { pcBrowsePath = null; currentFolderId = "root"; refreshAll(); }));
         upper.add(sidebarButton("＋   Import files", this::importFiles));
         upper.add(Box.createVerticalStrut(15));
         upper.add(sidebarHeading("PINNED"));
@@ -177,6 +177,7 @@ public class FileNestApp {
         folderTree.addTreeSelectionListener(e -> {
             Object node = folderTree.getLastSelectedPathComponent();
             if (node instanceof DefaultMutableTreeNode dm && dm.getUserObject() instanceof FolderRef ref) {
+                pcBrowsePath = null;
                 currentFolderId = ref.id;
                 refreshTable();
             }
