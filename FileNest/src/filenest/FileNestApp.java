@@ -727,6 +727,13 @@ public class FileNestApp {
     }
 
     private void previewSelected() {
+        int selectedRow = fileTable.getSelectedRow();
+        if (selectedRow >= 0 && pcBrowsePath != null) {
+            String key = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(selectedRow), 5));
+            File entry = pcBrowseEntries.get(key);
+            if (entry != null && entry.isFile()) openPcBrowserFile(entry);
+            return;
+        }
         FsNode node = selectedNode();
         if (node == null) return;
 
