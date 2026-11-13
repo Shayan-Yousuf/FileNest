@@ -47,7 +47,8 @@ public class FileNestApp {
         fs.seedDemoData();
         frame = new JFrame("FileNest | Real + Simulated File Manager");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setMinimumSize(new Dimension(900, 600));
+        frame.setMinimumSize(new Dimension(1000, 650));
+        frame.getContentPane().setBackground(new Color(29, 29, 29));
         frame.setLayout(new BorderLayout());
         frame.add(buildHeader(), BorderLayout.NORTH);
         frame.add(buildMain(), BorderLayout.CENTER);
@@ -100,8 +101,8 @@ public class FileNestApp {
         split.setContinuousLayout(true);
         split.setOneTouchExpandable(true);
         split.setDividerSize(8);
-        split.setResizeWeight(0.22);
-        split.setDividerLocation(245);
+        split.setResizeWeight(0.20);
+        split.setDividerLocation(218);
         split.setMinimumSize(new Dimension(700, 400));
         return split;
     }
@@ -109,16 +110,16 @@ public class FileNestApp {
     private JComponent buildSidebar() {
         JPanel panel = new JPanel(new BorderLayout(8, 10));
         panel.setBorder(new EmptyBorder(18, 12, 14, 10));
-        panel.setBackground(new Color(37, 37, 37));
+        panel.setBackground(new Color(36, 36, 36));
         panel.setMinimumSize(new Dimension(190, 300));
-        panel.setPreferredSize(new Dimension(235, 600));
+        panel.setPreferredSize(new Dimension(218, 600));
 
         JPanel upper = new JPanel();
         upper.setOpaque(false);
         upper.setLayout(new BoxLayout(upper, BoxLayout.Y_AXIS));
-        JLabel tabs = sidebarHeading("TABS");
+        JLabel tabs = sidebarHeading("WORKSPACE");
         upper.add(tabs);
-        upper.add(sidebarButton("⌂   Home", () -> { currentFolderId = "root"; refreshTable(); }));
+        upper.add(sidebarButton("⌂   Home", () -> { currentFolderId = "root"; refreshAll(); }));
         upper.add(sidebarButton("＋   Add files from PC", this::browseAndOpenPcFile));
         upper.add(Box.createVerticalStrut(15));
         upper.add(sidebarHeading("PINNED"));
@@ -244,7 +245,7 @@ public class FileNestApp {
     private JComponent buildWorkspace() {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
         panel.setBorder(new EmptyBorder(10, 10, 12, 12));
-        panel.setBackground(new Color(31, 31, 31));
+        panel.setBackground(new Color(29, 29, 29));
 
         JPanel top = new JPanel(new BorderLayout(8, 8));
         top.setOpaque(false);
@@ -291,12 +292,12 @@ public class FileNestApp {
             @Override public boolean isCellEditable(int row, int col) { return false; }
         };
         fileTable = new JTable(tableModel);
-        fileTable.setRowHeight(38);
+        fileTable.setRowHeight(43);
         fileTable.setFillsViewportHeight(true);
         fileTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         fileTable.setShowGrid(false);
-        fileTable.setIntercellSpacing(new Dimension(0, 1));
-        fileTable.setAutoResizeMode(JTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS);
+        fileTable.setIntercellSpacing(new Dimension(0, 0));
+        fileTable.setAutoResizeMode(JTable.AUTO_RESIZE_LAST_COLUMN);
         fileTable.setBackground(new Color(43, 43, 43));
         fileTable.setForeground(new Color(225, 225, 225));
         fileTable.setSelectionBackground(new Color(65, 65, 65));
@@ -304,21 +305,44 @@ public class FileNestApp {
         fileTable.setFont(new Font("SansSerif", Font.PLAIN, 12));
         fileTable.setRowSelectionAllowed(true);
         fileTable.setGridColor(new Color(48, 48, 48));
-        JTableHeaderStyle(fileTable);
-        fileTable.getColumnModel().getColumn(0).setPreferredWidth(210);
-        fileTable.getColumnModel().getColumn(1).setPreferredWidth(75);
-        fileTable.getColumnModel().getColumn(2).setPreferredWidth(90);
-        fileTable.getColumnModel().getColumn(3).setPreferredWidth(140);
-        fileTable.getColumnModel().getColumn(4).setPreferredWidth(80);
-        fileTable.removeColumn(fileTable.getColumnModel().getColumn(3));
-        fileTable.removeColumn(fileTable.getColumnModel().getColumn(3));
-        fileTable.removeColumn(fileTable.getColumnModel().getColumn(3));
+        fileTable.setTableHeader(null);
+        fileTable.setShowHorizontalLines(false);
+        fileTable.setShowVerticalLines(false);
+        fileTable.getColumnModel().getColumn(0).setPreferredWidth(360);
+        fileTable.removeColumn(fileTable.getColumnModel().getColumn(1));
+        fileTable.removeColumn(fileTable.getColumnModel().getColumn(1));
+        fileTable.setDefaultRenderer(Object.class, new javax.swing.table.DefaultTableCellRenderer() {
+            @Override public Component getTableCellRendererComponent(JTable table, Object value, boolean selected,
+                    boolean focus, int row, int column) {
+                JLabel label = (JLabel) super.getTableCellRendererComponent(table, value, selected, focus, row, column);
+                String name = String.valueOf(value);
+                Object idValue = tableModel.getValueAt(table.convertRowIndexToModel(row), 5);
+                FsNode node = null;
+                try { node = fs.findNode(String.valueOf(idValue)); } catch (RuntimeException ignored) { }
+                boolean folder = node instanceof FolderNode;
+                label.setText((folder ? "   ▰   " : "   ▧   ") + name);
+                label.setFont(new Font("SansSerif", Font.PLAIN, 13));
+                label.setForeground(selected ? Color.WHITE : (folder ? new Color(244, 194, 65) : new Color(222, 222, 222)));
+                label.setBackground(selected ? new Color(66, 66, 66) : new Color(43, 43, 43));
+                label.setBorder(new EmptyBorder(0, 8, 0, 8));
+                label.setOpaque(true);
+                return label;
+            }
+        });
         fileTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) updatePreviewPanel();
         });
         fileTable.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override public void mouseClicked(java.awt.event.MouseEvent e) {
-                if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) previewSelected();
+                if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
+                    FsNode selected = selectedNode();
+                    if (selected instanceof FolderNode folder) {
+                        currentFolderId = folder.id;
+                        refreshAll();
+                    } else if (selected instanceof FileNode) {
+                        previewSelected();
+                    }
+                }
             }
         });
         fileTable.setToolTipText("Double-click to open a file.");
@@ -328,7 +352,7 @@ public class FileNestApp {
         listCard.add(tableScroll, BorderLayout.CENTER);
 
         JPanel previewCard = darkCard(new BorderLayout(8, 10));
-        previewCard.setBorder(new EmptyBorder(14, 14, 14, 14));
+        previewCard.setBorder(new EmptyBorder(18, 18, 18, 18));
         JLabel previewHeading = new JLabel("PREVIEW");
         previewHeading.setForeground(new Color(155, 155, 155));
         previewHeading.setFont(new Font("SansSerif", Font.BOLD, 10));
@@ -339,6 +363,7 @@ public class FileNestApp {
         previewIcon = new JLabel("▧", SwingConstants.CENTER);
         previewIcon.setForeground(new Color(245, 190, 55));
         previewIcon.setFont(new Font("SansSerif", Font.PLAIN, 76));
+        previewIcon.setPreferredSize(new Dimension(320, 230));
         previewIcon.setAlignmentX(Component.CENTER_ALIGNMENT);
         previewName = new JLabel("Choose a file");
         previewName.setForeground(new Color(235, 235, 235));
@@ -371,8 +396,8 @@ public class FileNestApp {
         JSplitPane contentSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, listCard, previewCard);
         contentSplit.setBorder(null);
         contentSplit.setDividerSize(8);
-        contentSplit.setResizeWeight(0.66);
-        contentSplit.setDividerLocation(0.66);
+        contentSplit.setResizeWeight(0.52);
+        contentSplit.setDividerLocation(0.52);
         panel.add(contentSplit, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new BorderLayout(8, 6));
@@ -382,7 +407,8 @@ public class FileNestApp {
         storageLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
         storageBar = new JProgressBar(0, 100);
         storageBar.setStringPainted(true);
-        storageBar.setForeground(new Color(235, 185, 55));
+        storageBar.setForeground(new Color(242, 190, 55));
+        storageBar.setBorderPainted(false);
         storageBar.setBackground(new Color(55, 55, 55));
         bottom.add(storageLabel, BorderLayout.NORTH);
         bottom.add(storageBar, BorderLayout.CENTER);
@@ -393,11 +419,14 @@ public class FileNestApp {
     private JButton createButton(String text, boolean primary) {
         JButton button = new JButton(text);
         button.setFocusPainted(false);
-        button.setBorder(new EmptyBorder(8, 12, 8, 12));
+        button.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(primary ? new Color(242, 190, 55) : new Color(68, 68, 68)),
+                new EmptyBorder(7, 11, 7, 11)));
         button.setFont(new Font("SansSerif", Font.BOLD, 11));
         button.setBackground(primary ? new Color(242, 190, 55) : new Color(55, 55, 55));
         button.setForeground(primary ? new Color(30, 30, 30) : new Color(225, 225, 225));
         button.setOpaque(true);
+        button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         return button;
     }
 
