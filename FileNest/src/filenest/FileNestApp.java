@@ -64,6 +64,17 @@ public class FileNestApp {
         frame.setLocationByPlatform(true);
         frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
         frame.setVisible(true);
+        frame.addWindowFocusListener(new java.awt.event.WindowAdapter() {
+            @Override public void windowGainedFocus(java.awt.event.WindowEvent e) {
+                if (pcBrowsePath != null && Files.isDirectory(pcBrowsePath)) {
+                    SwingUtilities.invokeLater(() -> {
+                        refreshTable();
+                        fileTable.revalidate();
+                        fileTable.repaint();
+                    });
+                }
+            }
+        });
     }
 
     private JComponent buildHeader() {
@@ -291,7 +302,15 @@ public class FileNestApp {
             return;
         }
         pcBrowsePath = directory.toAbsolutePath().normalize();
+        currentFolderId = "root";
+        if (fileTable != null) fileTable.clearSelection();
+        pcBrowseEntries.clear();
+        if (pathLabel != null) pathLabel.setText(pcBrowsePath.toString());
         refreshTable();
+        if (fileTable != null) {
+            fileTable.revalidate();
+            fileTable.repaint();
+        }
         updatePreviewPanel();
         status("Browsing PC folder directly: " + pcBrowsePath);
     }
