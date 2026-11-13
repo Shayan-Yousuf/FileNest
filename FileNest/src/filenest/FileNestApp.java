@@ -38,6 +38,8 @@ public class FileNestApp {
     private JButton previewOpenButton;
     private JButton themeToggleButton;
     private boolean darkTheme = true;
+    private Path pcBrowsePath;
+    private final Map<String, File> pcBrowseEntries = new LinkedHashMap<>();
     private String currentFolderId = "root";
     private final Deque<String> accessHistory = new ArrayDeque<>();
 
@@ -137,10 +139,10 @@ public class FileNestApp {
         upper.add(sidebarButton("＋   Import files", this::importFiles));
         upper.add(Box.createVerticalStrut(15));
         upper.add(sidebarHeading("PINNED"));
-        upper.add(sidebarButton("▣   Downloads", () -> choosePcFolder("Downloads")));
-        upper.add(sidebarButton("▣   Documents", () -> choosePcFolder("Documents")));
-        upper.add(sidebarButton("▧   Pictures", () -> choosePcFolder("Pictures")));
-        upper.add(sidebarButton("▣   Desktop", () -> choosePcFolder("Desktop")));
+        upper.add(sidebarButton("▣   Downloads", () -> browsePcFolder(Path.of(System.getProperty("user.home"), "Downloads"))));
+        upper.add(sidebarButton("▣   Documents", () -> browsePcFolder(Path.of(System.getProperty("user.home"), "Documents"))));
+        upper.add(sidebarButton("▧   Pictures", () -> browsePcFolder(Path.of(System.getProperty("user.home"), "Pictures"))));
+        upper.add(sidebarButton("▣   Desktop", () -> browsePcFolder(Path.of(System.getProperty("user.home"), "Desktop")));
         upper.add(Box.createVerticalStrut(15));
         upper.add(sidebarHeading("DRIVES"));
         for (File drive : File.listRoots()) {
@@ -225,40 +227,22 @@ public class FileNestApp {
     }
 
     private void browseDrive(File drive) {
-        JFileChooser chooser = new JFileChooser(drive);
-        chooser.setDialogTitle("Browse " + drive.getPath() + " — choose files to add as direct links");
-        chooser.setMultiSelectionEnabled(true);
-        chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
-        if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return;
-        File[] files = chooser.getSelectedFiles();
-        if (files.length == 0 && chooser.getSelectedFile() != null) files = new File[]{chooser.getSelectedFile()};
-        int added = 0;
-        for (File file : files) {
-            try { fs.addPhysicalFile(currentFolderId, file.toPath(), false); added++; }
-            catch (Exception ex) { error(ex.getMessage()); }
+        browsePcFolder(drive.toPath());
+    }
+
+    private void browsePcFolder(Path directory) {
+        if (!Files.isDirectory(directory) || !Files.isReadable(directory)) {
+            error("This folder is unavailable or you do not have permission to access it.");
+            return;
         }
-        refreshAll();
-        status(added + " file(s) linked from " + drive.getPath() + ".");
+        pcBrowsePath = directory.toAbsolutePath().normalize();
+        refreshTable();
+        updatePreviewPanel();
+        status("Browsing PC folder directly: " + pcBrowsePath);
     }
 
     private void choosePcFolder(String folderName) {
-        Path path = Path.of(System.getProperty("user.home"), folderName);
-        if (Files.isDirectory(path)) {
-            JFileChooser chooser = new JFileChooser(path.toFile());
-            chooser.setDialogTitle("Choose a file from " + folderName);
-            chooser.setMultiSelectionEnabled(true);
-            if (chooser.showOpenDialog(frame) == JFileChooser.APPROVE_OPTION) {
-                File[] files = chooser.getSelectedFiles();
-                if (files.length == 0 && chooser.getSelectedFile() != null) files = new File[]{chooser.getSelectedFile()};
-                for (File file : files) {
-                    try { fs.addPhysicalFile(currentFolderId, file.toPath(), false); }
-                    catch (Exception ex) { error(ex.getMessage()); }
-                }
-                refreshAll();
-            }
-        } else {
-            JOptionPane.showMessageDialog(frame, folderName + " folder was not found. Use Add files from PC to browse manually.");
-        }
+        browsePcFolder(Path.of(System.getProperty("user.home"), folderName));
     }
 
     private JComponent buildWorkspace() {
@@ -334,8 +318,10 @@ public class FileNestApp {
                 String name = String.valueOf(value);
                 Object idValue = tableModel.getValueAt(table.convertRowIndexToModel(row), 5);
                 FsNode node = null;
-                try { node = fs.findNode(String.valueOf(idValue)); } catch (RuntimeException ignored) { }
-                boolean folder = node instanceof FolderNode;
+                String rowId = String.valueOf(idValue);
+                try { node = fs.findNode(rowId); } catch (RuntimeException ignored) { }
+                File pcEntry = pcBrowseEntries.get(rowId);
+                boolean folder = pcEntry != null && pcEntry.isDirectory() || node instanceof FolderNode;
                 label.setText((folder ? "   ▰   " : "   ▧   ") + name);
                 label.setFont(new Font("SansSerif", Font.PLAIN, 13));
                 label.setForeground(selected ? new Color(35, 125, 215)
@@ -353,12 +339,20 @@ public class FileNestApp {
         fileTable.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override public void mouseClicked(java.awt.event.MouseEvent e) {
                 if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
-                    FsNode selected = selectedNode();
-                    if (selected instanceof FolderNode folder) {
-                        currentFolderId = folder.id;
-                        refreshAll();
-                    } else if (selected instanceof FileNode) {
-                        previewSelected();
+                    if (pcBrowsePath != null) {
+                        int row = fileTable.getSelectedRow();
+                        if (row >= 0) {
+                            String key = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(row), 5));
+                            File entry = pcBrowseEntries.get(key);
+                            if (entry != null && entry.isDirectory()) browsePcFolder(entry.toPath());
+                            else if (entry != null) openPcBrowserFile(entry);
+                        }
+                    } else {
+                        FsNode selected = selectedNode();
+                        if (selected instanceof FolderNode folder) {
+                            currentFolderId = folder.id;
+                            refreshAll();
+                        } else if (selected instanceof FileNode) previewSelected();
                     }
                 }
             }
@@ -588,6 +582,26 @@ public class FileNestApp {
 
     private void refreshTable() {
         tableModel.setRowCount(0);
+        if (pcBrowsePath != null) {
+            pcBrowseEntries.clear();
+            if (pathLabel != null) pathLabel.setText(pcBrowsePath.toString());
+            File directory = pcBrowsePath.toFile();
+            File[] entries = directory.listFiles();
+            if (entries == null) {
+                status("Cannot list this folder (permission denied or unavailable).");
+                return;
+            }
+            Arrays.sort(entries, Comparator.comparing(File::isFile).thenComparing(f -> f.getName().toLowerCase(Locale.ROOT)));
+            for (File entry : entries) {
+                String key = "PCFS:" + entry.getAbsolutePath();
+                pcBrowseEntries.put(key, entry);
+                String type = entry.isDirectory() ? "Folder" : "PC File";
+                String size = entry.isFile() ? formatBytes(entry.length()) : "—";
+                tableModel.addRow(new Object[]{entry.getName(), type, size, "—", "—", key});
+            }
+            if (previewName != null) updatePreviewPanel();
+            return;
+        }
         FolderNode folder = fs.folders.get(currentFolderId);
         if (folder == null) { currentFolderId = "root"; folder = fs.root; }
         if (pathLabel != null) pathLabel.setText("Home  /  " + fs.folderPath(folder).replace("/", "  /  "));
@@ -604,6 +618,18 @@ public class FileNestApp {
 
     private void updatePreviewPanel() {
         int row = fileTable == null ? -1 : fileTable.getSelectedRow();
+        if (row >= 0 && pcBrowsePath != null) {
+            String key = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(row), 5));
+            File entry = pcBrowseEntries.get(key);
+            if (entry == null) return;
+            previewIcon.setIcon(null);
+            previewIcon.setText(entry.isDirectory() ? "📁" : "▤");
+            previewName.setText(entry.getName());
+            previewMeta.setText(entry.isFile() ? formatBytes(entry.length()) + "  •  Original PC file" : "Folder  •  Direct PC access");
+            previewHint.setText(entry.isDirectory() ? "Double-click to browse this folder" : "Opens with your PC's default application");
+            previewOpenButton.setVisible(entry.isFile());
+            return;
+        }
         if (row < 0) {
             previewIcon.setIcon(null);
             previewIcon.setText("▧");
@@ -614,6 +640,11 @@ public class FileNestApp {
             return;
         }
         String id = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(row), 5));
+        if (id.startsWith("PCFS:")) {
+            File entry = pcBrowseEntries.get(id);
+            if (entry != null && entry.isFile()) openPcBrowserFile(entry);
+            return;
+        }
         FsNode node;
         try { node = fs.findNode(id); } catch (RuntimeException ex) { return; }
         if (node instanceof FolderNode folder) {
@@ -790,9 +821,30 @@ public class FileNestApp {
         }
     }
 
+    private void openPcBrowserFile(File file) {
+        try {
+            if (!file.exists() || !file.isFile()) { error("This file is no longer available."); return; }
+            if (!Desktop.isDesktopSupported() || !Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                error("Opening files with Windows default applications is not supported on this computer.");
+                return;
+            }
+            Desktop.getDesktop().open(file);
+            accessHistory.addFirst(file.getName() + "  •  " + formatTime(Instant.now()) + "  •  PC direct");
+            while (accessHistory.size() > 30) accessHistory.removeLast();
+            status("Opened directly from PC; no copy was saved in FileNest: " + file.getName());
+        } catch (IOException | UnsupportedOperationException ex) {
+            error("Could not open file: " + ex.getMessage());
+        }
+    }
+
     private FsNode selectedNode() {
         int row = fileTable.getSelectedRow();
         if (row < 0) { error("Select a file or folder first."); return null; }
+        String rowKey = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(row), 5));
+        if (rowKey.startsWith("PCFS:")) {
+            error("This is a directly browsed PC item. Import it first if you want to manage it inside FileNest.");
+            return null;
+        }
         String name = String.valueOf(tableModel.getValueAt(row, 0));
         String id = String.valueOf(tableModel.getValueAt(row, 5));
         try { return fs.findNode(id); }
