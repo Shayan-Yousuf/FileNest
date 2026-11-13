@@ -121,7 +121,7 @@ public class FileNestApp {
         JLabel tabs = sidebarHeading("WORKSPACE");
         upper.add(tabs);
         upper.add(sidebarButton("⌂   Home", () -> { currentFolderId = "root"; refreshAll(); }));
-        upper.add(sidebarButton("＋   Add files from PC", this::browseAndOpenPcFile));
+        upper.add(sidebarButton("＋   Import files", this::importFiles));
         upper.add(Box.createVerticalStrut(15));
         upper.add(sidebarHeading("PINNED"));
         upper.add(sidebarButton("▣   Downloads", () -> choosePcFolder("Downloads")));
@@ -268,24 +268,22 @@ public class FileNestApp {
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         actions.setOpaque(false);
         JButton[] buttons = {
-            createButton("Import", false), createButton("Open PC File", false),
-            createButton("Rename", false),
+            createButton("Import", false), createButton("Rename", false),
             createButton("Move", false), createButton("Delete", false),
             createButton("Undo", false), createButton("Cleanup", false),
             createButton("History", false), createButton("Analyze", false),
             createButton("Save", false), createButton("Load", false)
         };
         buttons[0].addActionListener(e -> importFiles());
-        buttons[1].addActionListener(e -> browseAndOpenPcFile());
-        buttons[2].addActionListener(e -> renameSelected());
-        buttons[3].addActionListener(e -> moveSelected());
-        buttons[4].addActionListener(e -> deleteSelected());
-        buttons[5].addActionListener(e -> { if (fs.canUndo()) { fs.undo(); refreshAll(); status("Last operation undone."); } else status("Nothing to undo yet."); });
-        buttons[6].addActionListener(e -> showCleanup());
-        buttons[7].addActionListener(e -> showHistory());
-        buttons[8].addActionListener(e -> showAnalytics());
-        buttons[9].addActionListener(e -> saveSnapshot());
-        buttons[10].addActionListener(e -> loadSnapshot());
+        buttons[1].addActionListener(e -> renameSelected());
+        buttons[2].addActionListener(e -> moveSelected());
+        buttons[3].addActionListener(e -> deleteSelected());
+        buttons[4].addActionListener(e -> { if (fs.canUndo()) { fs.undo(); refreshAll(); status("Last operation undone."); } else status("Nothing to undo yet."); });
+        buttons[5].addActionListener(e -> showCleanup());
+        buttons[6].addActionListener(e -> showHistory());
+        buttons[7].addActionListener(e -> showAnalytics());
+        buttons[8].addActionListener(e -> saveSnapshot());
+        buttons[9].addActionListener(e -> loadSnapshot());
         for (JButton button : buttons) actions.add(button);
         top.add(actions, BorderLayout.CENTER);
         panel.add(top, BorderLayout.NORTH);
@@ -685,20 +683,6 @@ public class FileNestApp {
         } catch (IOException | RuntimeException ex) {
             refreshAll();
             error("Import stopped: " + ex.getMessage());
-        }
-    }
-
-    private void browseAndOpenPcFile() {
-        JFileChooser chooser = new JFileChooser();
-        chooser.setDialogTitle("Browse this PC");
-        chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
-        if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return;
-        try {
-            FileRecord record = fs.addPhysicalFile(currentFolderId, chooser.getSelectedFile().toPath(), false);
-            refreshAll();
-            openPhysicalFile(record);
-        } catch (IOException | RuntimeException ex) {
-            error("Could not add/open this file: " + ex.getMessage());
         }
     }
 
