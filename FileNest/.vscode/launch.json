@@ -7,7 +7,7 @@
       "request": "launch",
       "mainClass": "filenest.FileNestApp",
       "classPaths": [
-        "\${workspaceFolder}/out"
+        "${workspaceFolder}/out"
       ],
       "preLaunchTask": "FileNest: Build"
     }

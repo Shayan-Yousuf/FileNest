@@ -15,7 +15,7 @@
         "tests/filenest/FileNestManagerTest.java"
       ],
       "options": {
-        "cwd": "\${workspaceFolder}"
+        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": "$javac",
       "group": {
@@ -38,7 +38,7 @@
         "filenest.FileNestApp"
       ],
       "options": {
-        "cwd": "\${workspaceFolder}"
+        "cwd": "${workspaceFolder}"
       },
       "dependsOn": "FileNest: Build",
       "dependsOrder": "sequence",
@@ -55,7 +55,7 @@
         "filenest.FileNestManagerTest"
       ],
       "options": {
-        "cwd": "\${workspaceFolder}"
+        "cwd": "${workspaceFolder}"
       },
       "dependsOn": "FileNest: Build",
       "dependsOrder": "sequence",
