@@ -1,0 +1,10 @@
+{
+  "java.project.sourcePaths": [
+    "src",
+    "tests"
+  ],
+  "java.project.outputPath": "out",
+  "java.project.referencedLibraries": [],
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.debug.settings.console": "integratedTerminal"
+}

@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "FileNest: Debug GUI",
+      "request": "launch",
+      "mainClass": "filenest.FileNestApp",
+      "classPaths": [
+        "\${workspaceFolder}/out"
+      ],
+      "preLaunchTask": "FileNest: Build"
+    }
+  ]
+}

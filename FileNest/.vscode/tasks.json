@@ -1,0 +1,66 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "FileNest: Build",
+      "type": "shell",
+      "command": "javac",
+      "args": [
+        "--release",
+        "17",
+        "-Xlint:all",
+        "-d",
+        "out",
+        "src/filenest/FileNestApp.java",
+        "tests/filenest/FileNestManagerTest.java"
+      ],
+      "options": {
+        "cwd": "\${workspaceFolder}"
+      },
+      "problemMatcher": "$javac",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      }
+    },
+    {
+      "label": "FileNest: Run GUI",
+      "type": "shell",
+      "command": "java",
+      "args": [
+        "-cp",
+        "out",
+        "filenest.FileNestApp"
+      ],
+      "options": {
+        "cwd": "\${workspaceFolder}"
+      },
+      "dependsOn": "FileNest: Build",
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "FileNest: Run Tests",
+      "type": "shell",
+      "command": "java",
+      "args": [
+        "-Djava.awt.headless=true",
+        "-cp",
+        "out",
+        "filenest.FileNestManagerTest"
+      ],
+      "options": {
+        "cwd": "\${workspaceFolder}"
+      },
+      "dependsOn": "FileNest: Build",
+      "dependsOrder": "sequence",
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}

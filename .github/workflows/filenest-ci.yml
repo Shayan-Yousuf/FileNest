@@ -1,0 +1,33 @@
+name: FileNest Java CI
+
+on:
+  push:
+    paths:
+      - "FileNest/**"
+      - ".github/workflows/filenest-ci.yml"
+  pull_request:
+    paths:
+      - "FileNest/**"
+      - ".github/workflows/filenest-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Compile for Java 17
+        working-directory: FileNest
+        run: javac --release 17 -Xlint:all -d out src/filenest/FileNestApp.java tests/filenest/FileNestManagerTest.java
+
+      - name: Run regression tests
+        working-directory: FileNest
+        run: java -Djava.awt.headless=true -cp out filenest.FileNestManagerTest
