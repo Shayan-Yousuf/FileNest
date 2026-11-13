@@ -672,23 +672,22 @@ public class FileNestApp {
     }
 
     private void refreshTable() {
-        tableModel.setRowCount(0);
-        thumbnailCache.keySet().removeIf(key -> {
-            int split = key.lastIndexOf('|');
-            if (split < 0) return true;
-            String path = key.substring(0, split);
-            return !Files.exists(Path.of(path));
-        });
+        // In PC-browse mode, read the directory before clearing the current rows.
+        // File.listFiles() can temporarily return null (for example, during a
+        // Windows focus/application hand-off). Keep the previous listing visible
+        // instead of making the whole file area appear empty.
         if (pcBrowsePath != null) {
-            pcBrowseEntries.clear();
-            if (pathLabel != null) pathLabel.setText(pcBrowsePath.toString());
             File directory = pcBrowsePath.toFile();
             File[] entries = directory.listFiles();
             if (entries == null) {
-                status("Cannot list this folder (permission denied or unavailable).");
+                if (pathLabel != null) pathLabel.setText(pcBrowsePath.toString());
+                status("Could not refresh this PC folder; showing the previous listing. Check folder access and try again.");
                 return;
             }
             Arrays.sort(entries, Comparator.comparing(File::isFile).thenComparing(f -> f.getName().toLowerCase(Locale.ROOT)));
+            tableModel.setRowCount(0);
+            pcBrowseEntries.clear();
+            if (pathLabel != null) pathLabel.setText(pcBrowsePath.toString());
             for (File entry : entries) {
                 String key = "PCFS:" + entry.getAbsolutePath();
                 pcBrowseEntries.put(key, entry);
@@ -699,6 +698,14 @@ public class FileNestApp {
             if (previewName != null) updatePreviewPanel();
             return;
         }
+
+        tableModel.setRowCount(0);
+        thumbnailCache.keySet().removeIf(key -> {
+            int split = key.lastIndexOf('|');
+            if (split < 0) return true;
+            String path = key.substring(0, split);
+            return !Files.exists(Path.of(path));
+        });
         FolderNode folder = fs.folders.get(currentFolderId);
         if (folder == null) { currentFolderId = "root"; folder = fs.root; }
         if (pathLabel != null) pathLabel.setText("Home  /  " + fs.folderPath(folder).replace("/", "  /  "));
