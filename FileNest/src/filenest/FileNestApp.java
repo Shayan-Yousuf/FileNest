@@ -269,9 +269,9 @@ public class FileNestApp {
         try {
             Image image = ImageIO.read(file);
             if (image == null) return null;
-            double scale = Math.min((double) width / image.getWidth(), (double) height / image.getHeight());
-            int scaledWidth = Math.max(1, (int) Math.round(image.getWidth() * scale));
-            int scaledHeight = Math.max(1, (int) Math.round(image.getHeight() * scale));
+            double scale = Math.min((double) width / image.getWidth(null), (double) height / image.getHeight(null));
+            int scaledWidth = Math.max(1, (int) Math.round(image.getWidth(null) * scale));
+            int scaledHeight = Math.max(1, (int) Math.round(image.getHeight(null) * scale));
             Image scaled = image.getScaledInstance(scaledWidth, scaledHeight, Image.SCALE_SMOOTH);
             ImageIcon icon = new ImageIcon(scaled);
             thumbnailCache.put(cacheKey, icon);
