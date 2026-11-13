@@ -13,6 +13,7 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import javax.imageio.ImageIO;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -33,6 +34,8 @@ public class FileNestApp {
     private JLabel statusLabel, storageLabel;
     private JProgressBar storageBar;
     private JTextField searchField;
+    private JLabel pathLabel, previewIcon, previewName, previewMeta, previewHint;
+    private JButton previewOpenButton;
     private String currentFolderId = "root";
     private final Deque<String> accessHistory = new ArrayDeque<>();
 
@@ -56,28 +59,33 @@ public class FileNestApp {
     }
 
     private JComponent buildHeader() {
-        JPanel header = new JPanel(new BorderLayout(12, 8));
-        header.setBorder(new EmptyBorder(16, 18, 16, 18));
-        header.setBackground(new Color(25, 38, 58));
+        JPanel header = new JPanel(new BorderLayout(14, 0));
+        header.setBorder(new EmptyBorder(12, 16, 12, 16));
+        header.setBackground(new Color(31, 31, 31));
 
-        JPanel brand = new JPanel(new GridLayout(2, 1));
-        brand.setOpaque(false);
-        JLabel title = new JLabel("FileNest");
-        title.setForeground(Color.WHITE);
-        title.setFont(new Font("SansSerif", Font.BOLD, 25));
-        JLabel sub = new JLabel("REAL + SIMULATED PC FILE MANAGER  •  JAVA + DSA");
-        sub.setForeground(new Color(185, 203, 225));
-        sub.setFont(new Font("SansSerif", Font.PLAIN, 10));
-        brand.add(title);
-        brand.add(sub);
+        JLabel brand = new JLabel("▣  FileNest");
+        brand.setForeground(new Color(245, 245, 245));
+        brand.setFont(new Font("SansSerif", Font.BOLD, 21));
         header.add(brand, BorderLayout.WEST);
+
+        JPanel address = new JPanel(new BorderLayout(8, 0));
+        address.setBackground(new Color(43, 43, 43));
+        address.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(55, 55, 55)),
+                new EmptyBorder(8, 14, 8, 14)));
+        pathLabel = new JLabel("Home  /  All files");
+        pathLabel.setForeground(new Color(205, 205, 205));
+        pathLabel.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        address.add(pathLabel, BorderLayout.CENTER);
+        header.add(address, BorderLayout.CENTER);
 
         JPanel search = new JPanel(new BorderLayout(6, 0));
         search.setOpaque(false);
         searchField = new JTextField();
-        searchField.setPreferredSize(new Dimension(260, 34));
-        searchField.setToolTipText("Search file names (prefix search using Trie)");
-        JButton searchButton = new JButton("Search");
+        searchField.setPreferredSize(new Dimension(210, 34));
+        searchField.setToolTipText("Search file names using Trie prefix search");
+        styleInput(searchField);
+        JButton searchButton = createButton("Search", true);
         searchButton.addActionListener(e -> searchFiles());
         searchField.addActionListener(e -> searchFiles());
         search.add(searchField, BorderLayout.CENTER);
@@ -99,21 +107,48 @@ public class FileNestApp {
     }
 
     private JComponent buildSidebar() {
-        JPanel panel = new JPanel(new BorderLayout(5, 8));
-        panel.setBorder(new EmptyBorder(12, 12, 12, 8));
-        panel.setBackground(new Color(245, 247, 250));
-        panel.setMinimumSize(new Dimension(185, 300));
-        panel.setPreferredSize(new Dimension(245, 500));
-        JLabel label = new JLabel("FOLDER STRUCTURE");
-        label.setFont(new Font("SansSerif", Font.BOLD, 11));
-        label.setForeground(new Color(75, 91, 112));
-        panel.add(label, BorderLayout.NORTH);
+        JPanel panel = new JPanel(new BorderLayout(8, 10));
+        panel.setBorder(new EmptyBorder(18, 12, 14, 10));
+        panel.setBackground(new Color(37, 37, 37));
+        panel.setMinimumSize(new Dimension(190, 300));
+        panel.setPreferredSize(new Dimension(235, 600));
 
-        DefaultMutableTreeNode root = new DefaultMutableTreeNode("Home");
+        JPanel upper = new JPanel();
+        upper.setOpaque(false);
+        upper.setLayout(new BoxLayout(upper, BoxLayout.Y_AXIS));
+        JLabel tabs = sidebarHeading("TABS");
+        upper.add(tabs);
+        upper.add(sidebarButton("⌂   Home", () -> { currentFolderId = "root"; refreshTable(); }));
+        upper.add(sidebarButton("＋   Add files from PC", this::browseAndOpenPcFile));
+        upper.add(Box.createVerticalStrut(15));
+        upper.add(sidebarHeading("PINNED"));
+        upper.add(sidebarButton("▣   Downloads", () -> choosePcFolder("Downloads")));
+        upper.add(sidebarButton("▣   Documents", () -> choosePcFolder("Documents")));
+        upper.add(sidebarButton("▧   Pictures", () -> choosePcFolder("Pictures")));
+        upper.add(sidebarButton("▣   Desktop", () -> choosePcFolder("Desktop")));
+        upper.add(Box.createVerticalStrut(15));
+        upper.add(sidebarHeading("FILENEST FOLDERS"));
+
+        DefaultMutableTreeNode root = new DefaultMutableTreeNode(new FolderRef("root", "⌂  Home"));
         folderTree = new JTree(root);
         folderTree.setRootVisible(true);
         folderTree.setShowsRootHandles(true);
-        folderTree.setRowHeight(25);
+        folderTree.setRowHeight(27);
+        folderTree.setBackground(new Color(37, 37, 37));
+        folderTree.setForeground(new Color(220, 220, 220));
+        folderTree.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        folderTree.setBorder(new EmptyBorder(5, 2, 5, 2));
+        folderTree.setCellRenderer(new DefaultTreeCellRenderer() {
+            @Override public Component getTreeCellRendererComponent(JTree tree, Object value, boolean selected,
+                    boolean expanded, boolean leaf, int row, boolean hasFocus) {
+                JLabel label = (JLabel) super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
+                label.setOpaque(selected);
+                label.setBackground(selected ? new Color(67, 67, 67) : new Color(37, 37, 37));
+                label.setForeground(new Color(225, 225, 225));
+                label.setBorder(new EmptyBorder(3, 4, 3, 4));
+                return label;
+            }
+        });
         folderTree.addTreeSelectionListener(e -> {
             Object node = folderTree.getLastSelectedPathComponent();
             if (node instanceof DefaultMutableTreeNode dm && dm.getUserObject() instanceof FolderRef ref) {
@@ -122,12 +157,18 @@ public class FileNestApp {
             }
         });
         treeModel = (DefaultTreeModel) folderTree.getModel();
-        panel.add(new JScrollPane(folderTree), BorderLayout.CENTER);
 
-        JPanel actions = new JPanel(new GridLayout(2, 1, 5, 5));
-        JButton newFolder = new JButton("+ New Folder");
+        JPanel treeArea = new JPanel(new BorderLayout());
+        treeArea.setOpaque(false);
+        treeArea.add(new JScrollPane(folderTree), BorderLayout.CENTER);
+        upper.add(treeArea);
+        panel.add(upper, BorderLayout.CENTER);
+
+        JPanel actions = new JPanel(new GridLayout(2, 1, 7, 7));
+        actions.setOpaque(false);
+        JButton newFolder = createButton("+ New Folder", false);
         newFolder.addActionListener(e -> createFolder());
-        JButton newFile = new JButton("+ New File");
+        JButton newFile = createButton("+ New File", false);
         newFile.addActionListener(e -> createFile());
         actions.add(newFolder);
         actions.add(newFile);
@@ -135,55 +176,90 @@ public class FileNestApp {
         return panel;
     }
 
+    private JLabel sidebarHeading(String text) {
+        JLabel label = new JLabel(text);
+        label.setForeground(new Color(145, 145, 145));
+        label.setFont(new Font("SansSerif", Font.BOLD, 10));
+        label.setBorder(new EmptyBorder(9, 8, 6, 4));
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return label;
+    }
+
+    private JButton sidebarButton(String text, Runnable action) {
+        JButton button = new JButton(text);
+        button.setHorizontalAlignment(SwingConstants.LEFT);
+        button.setForeground(new Color(215, 215, 215));
+        button.setBackground(new Color(37, 37, 37));
+        button.setBorder(new EmptyBorder(8, 9, 8, 5));
+        button.setFocusPainted(false);
+        button.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        button.setAlignmentX(Component.LEFT_ALIGNMENT);
+        button.addActionListener(e -> action.run());
+        return button;
+    }
+
+    private void choosePcFolder(String folderName) {
+        Path path = Path.of(System.getProperty("user.home"), folderName);
+        if (Files.isDirectory(path)) {
+            JFileChooser chooser = new JFileChooser(path.toFile());
+            chooser.setDialogTitle("Choose a file from " + folderName);
+            chooser.setMultiSelectionEnabled(true);
+            if (chooser.showOpenDialog(frame) == JFileChooser.APPROVE_OPTION) {
+                File[] files = chooser.getSelectedFiles();
+                if (files.length == 0 && chooser.getSelectedFile() != null) files = new File[]{chooser.getSelectedFile()};
+                for (File file : files) {
+                    try { fs.addPhysicalFile(currentFolderId, file.toPath(), false); }
+                    catch (Exception ex) { error(ex.getMessage()); }
+                }
+                refreshAll();
+            }
+        } else {
+            JOptionPane.showMessageDialog(frame, folderName + " folder was not found. Use Add files from PC to browse manually.");
+        }
+    }
+
     private JComponent buildWorkspace() {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
-        panel.setBorder(new EmptyBorder(14, 10, 14, 14));
-        panel.setBackground(Color.WHITE);
+        panel.setBorder(new EmptyBorder(10, 10, 12, 12));
+        panel.setBackground(new Color(31, 31, 31));
 
-        JPanel top = new JPanel(new BorderLayout(8, 10));
+        JPanel top = new JPanel(new BorderLayout(8, 8));
         top.setOpaque(false);
-        JLabel heading = new JLabel("File Explorer");
-        heading.setFont(new Font("SansSerif", Font.BOLD, 20));
-        top.add(heading, BorderLayout.NORTH);
+        JPanel headingRow = new JPanel(new BorderLayout());
+        headingRow.setOpaque(false);
+        JLabel heading = new JLabel("Browse files");
+        heading.setForeground(new Color(238, 238, 238));
+        heading.setFont(new Font("SansSerif", Font.BOLD, 18));
+        headingRow.add(heading, BorderLayout.WEST);
+        JLabel hint = new JLabel("Select a file to see its preview");
+        hint.setForeground(new Color(145, 145, 145));
+        hint.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        headingRow.add(hint, BorderLayout.EAST);
+        top.add(headingRow, BorderLayout.NORTH);
 
-        // Simple actions are grouped in a compact two-row toolbar.
-        JPanel actions = new JPanel(new GridLayout(2, 7, 7, 7));
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         actions.setOpaque(false);
-        JButton importFiles = new JButton("Import Files");
-        importFiles.setToolTipText("Copy files into FileNest or link to their original PC locations");
-        importFiles.addActionListener(e -> importFiles());
-        JButton browsePc = new JButton("Open PC File");
-        browsePc.setToolTipText("Choose any file on this PC, register it and open it");
-        browsePc.addActionListener(e -> browseAndOpenPcFile());
-        JButton preview = new JButton("Open / Preview");
-        preview.setToolTipText("Open real files in their default app or preview simulated files");
-        preview.addActionListener(e -> previewSelected());
-        JButton open = new JButton("Record Access");
-        open.setToolTipText("Record access without opening the file");
-        open.addActionListener(e -> accessSelected());
-        JButton rename = new JButton("Rename");
-        rename.addActionListener(e -> renameSelected());
-        JButton move = new JButton("Move");
-        move.addActionListener(e -> moveSelected());
-        JButton delete = new JButton("Delete");
-        delete.addActionListener(e -> deleteSelected());
-        JButton undo = new JButton("Undo");
-        undo.addActionListener(e -> {
-            if (fs.canUndo()) { fs.undo(); refreshAll(); status("Last operation undone."); }
-            else status("Nothing to undo yet.");
-        });
-        JButton cleanup = new JButton("Cleanup Tips");
-        cleanup.addActionListener(e -> showCleanup());
-        JButton history = new JButton("Access History");
-        history.addActionListener(e -> showHistory());
-        JButton analytics = new JButton("Quick Analyze");
-        analytics.addActionListener(e -> showAnalytics());
-        JButton save = new JButton("Save");
-        save.addActionListener(e -> saveSnapshot());
-        JButton load = new JButton("Load");
-        load.addActionListener(e -> loadSnapshot());
-        actions.add(importFiles); actions.add(browsePc); actions.add(preview); actions.add(open); actions.add(rename); actions.add(move); actions.add(delete);
-        actions.add(undo); actions.add(cleanup); actions.add(history); actions.add(analytics); actions.add(save); actions.add(load);
+        JButton[] buttons = {
+            createButton("Import", true), createButton("Open PC File", false),
+            createButton("Open", false), createButton("Rename", false),
+            createButton("Move", false), createButton("Delete", false),
+            createButton("Undo", false), createButton("Cleanup", false),
+            createButton("History", false), createButton("Analyze", false),
+            createButton("Save", false), createButton("Load", false)
+        };
+        buttons[0].addActionListener(e -> importFiles());
+        buttons[1].addActionListener(e -> browseAndOpenPcFile());
+        buttons[2].addActionListener(e -> previewSelected());
+        buttons[3].addActionListener(e -> renameSelected());
+        buttons[4].addActionListener(e -> moveSelected());
+        buttons[5].addActionListener(e -> deleteSelected());
+        buttons[6].addActionListener(e -> { if (fs.canUndo()) { fs.undo(); refreshAll(); status("Last operation undone."); } else status("Nothing to undo yet."); });
+        buttons[7].addActionListener(e -> showCleanup());
+        buttons[8].addActionListener(e -> showHistory());
+        buttons[9].addActionListener(e -> showAnalytics());
+        buttons[10].addActionListener(e -> saveSnapshot());
+        buttons[11].addActionListener(e -> loadSnapshot());
+        for (JButton button : buttons) actions.add(button);
         top.add(actions, BorderLayout.CENTER);
         panel.add(top, BorderLayout.NORTH);
 
@@ -192,47 +268,152 @@ public class FileNestApp {
             @Override public boolean isCellEditable(int row, int col) { return false; }
         };
         fileTable = new JTable(tableModel);
-        fileTable.setRowHeight(32);
+        fileTable.setRowHeight(38);
         fileTable.setFillsViewportHeight(true);
         fileTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        fileTable.setShowGrid(false);
+        fileTable.setIntercellSpacing(new Dimension(0, 1));
+        fileTable.setAutoResizeMode(JTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS);
+        fileTable.setBackground(new Color(43, 43, 43));
+        fileTable.setForeground(new Color(225, 225, 225));
+        fileTable.setSelectionBackground(new Color(65, 65, 65));
+        fileTable.setSelectionForeground(Color.WHITE);
+        fileTable.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        fileTable.setRowSelectionAllowed(true);
+        fileTable.setGridColor(new Color(48, 48, 48));
+        JTableHeaderStyle(fileTable);
+        fileTable.getColumnModel().getColumn(0).setPreferredWidth(210);
+        fileTable.getColumnModel().getColumn(1).setPreferredWidth(75);
+        fileTable.getColumnModel().getColumn(2).setPreferredWidth(90);
+        fileTable.getColumnModel().getColumn(3).setPreferredWidth(140);
+        fileTable.getColumnModel().getColumn(4).setPreferredWidth(80);
+        fileTable.removeColumn(fileTable.getColumnModel().getColumn(3));
+        fileTable.removeColumn(fileTable.getColumnModel().getColumn(3));
+        fileTable.removeColumn(fileTable.getColumnModel().getColumn(3));
+        fileTable.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) updatePreviewPanel();
+        });
         fileTable.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override public void mouseClicked(java.awt.event.MouseEvent e) {
                 if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) previewSelected();
             }
         });
-        fileTable.setToolTipText("Double-click a file to preview its content.");
-        fileTable.setShowGrid(false);
-        fileTable.setIntercellSpacing(new Dimension(0, 1));
-        fileTable.setAutoResizeMode(JTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS);
-        fileTable.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 12));
-        fileTable.getColumnModel().getColumn(0).setPreferredWidth(230);
-        fileTable.getColumnModel().getColumn(1).setPreferredWidth(75);
-        fileTable.getColumnModel().getColumn(2).setPreferredWidth(105);
-        fileTable.getColumnModel().getColumn(3).setPreferredWidth(165);
-        fileTable.getColumnModel().getColumn(4).setPreferredWidth(105);
-        fileTable.removeColumn(fileTable.getColumnModel().getColumn(5)); // Keep stable IDs hidden from the user.
+        fileTable.setToolTipText("Double-click to open a file.");
         JScrollPane tableScroll = new JScrollPane(fileTable);
-        tableScroll.setBorder(BorderFactory.createLineBorder(new Color(225, 231, 239)));
-        tableScroll.getViewport().setBackground(Color.WHITE);
-        panel.add(tableScroll, BorderLayout.CENTER);
+        styleScrollPane(tableScroll);
+        JPanel listCard = darkCard(new BorderLayout());
+        listCard.add(tableScroll, BorderLayout.CENTER);
+
+        JPanel previewCard = darkCard(new BorderLayout(8, 10));
+        previewCard.setBorder(new EmptyBorder(14, 14, 14, 14));
+        JLabel previewHeading = new JLabel("PREVIEW");
+        previewHeading.setForeground(new Color(155, 155, 155));
+        previewHeading.setFont(new Font("SansSerif", Font.BOLD, 10));
+        previewCard.add(previewHeading, BorderLayout.NORTH);
+        JPanel previewBody = new JPanel();
+        previewBody.setOpaque(false);
+        previewBody.setLayout(new BoxLayout(previewBody, BoxLayout.Y_AXIS));
+        previewIcon = new JLabel("▧", SwingConstants.CENTER);
+        previewIcon.setForeground(new Color(245, 190, 55));
+        previewIcon.setFont(new Font("SansSerif", Font.PLAIN, 76));
+        previewIcon.setAlignmentX(Component.CENTER_ALIGNMENT);
+        previewName = new JLabel("Choose a file");
+        previewName.setForeground(new Color(235, 235, 235));
+        previewName.setFont(new Font("SansSerif", Font.BOLD, 15));
+        previewName.setAlignmentX(Component.CENTER_ALIGNMENT);
+        previewMeta = new JLabel("File information will appear here");
+        previewMeta.setForeground(new Color(155, 155, 155));
+        previewMeta.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        previewMeta.setAlignmentX(Component.CENTER_ALIGNMENT);
+        previewHint = new JLabel("Select an item from the list");
+        previewHint.setForeground(new Color(135, 135, 135));
+        previewHint.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        previewHint.setAlignmentX(Component.CENTER_ALIGNMENT);
+        previewOpenButton = createButton("Open file", true);
+        previewOpenButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        previewOpenButton.addActionListener(e -> previewSelected());
+        previewBody.add(Box.createVerticalGlue());
+        previewBody.add(previewIcon);
+        previewBody.add(Box.createVerticalStrut(18));
+        previewBody.add(previewName);
+        previewBody.add(Box.createVerticalStrut(7));
+        previewBody.add(previewMeta);
+        previewBody.add(Box.createVerticalStrut(12));
+        previewBody.add(previewHint);
+        previewBody.add(Box.createVerticalStrut(18));
+        previewBody.add(previewOpenButton);
+        previewBody.add(Box.createVerticalGlue());
+        previewCard.add(previewBody, BorderLayout.CENTER);
+
+        JSplitPane contentSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, listCard, previewCard);
+        contentSplit.setBorder(null);
+        contentSplit.setDividerSize(8);
+        contentSplit.setResizeWeight(0.66);
+        contentSplit.setDividerLocation(0.66);
+        panel.add(contentSplit, BorderLayout.CENTER);
 
         JPanel bottom = new JPanel(new BorderLayout(8, 6));
         bottom.setOpaque(false);
         storageLabel = new JLabel();
-        storageLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        storageLabel.setForeground(new Color(175, 175, 175));
+        storageLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
         storageBar = new JProgressBar(0, 100);
         storageBar.setStringPainted(true);
+        storageBar.setForeground(new Color(235, 185, 55));
+        storageBar.setBackground(new Color(55, 55, 55));
         bottom.add(storageLabel, BorderLayout.NORTH);
         bottom.add(storageBar, BorderLayout.CENTER);
         panel.add(bottom, BorderLayout.SOUTH);
         return panel;
     }
 
+    private JButton createButton(String text, boolean primary) {
+        JButton button = new JButton(text);
+        button.setFocusPainted(false);
+        button.setBorder(new EmptyBorder(8, 12, 8, 12));
+        button.setFont(new Font("SansSerif", Font.BOLD, 11));
+        button.setBackground(primary ? new Color(242, 190, 55) : new Color(55, 55, 55));
+        button.setForeground(primary ? new Color(30, 30, 30) : new Color(225, 225, 225));
+        button.setOpaque(true);
+        return button;
+    }
+
+    private void styleInput(JTextField field) {
+        field.setBackground(new Color(43, 43, 43));
+        field.setForeground(new Color(235, 235, 235));
+        field.setCaretColor(Color.WHITE);
+        field.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(65, 65, 65)),
+                new EmptyBorder(7, 9, 7, 9)));
+    }
+
+    private JPanel darkCard(LayoutManager layout) {
+        JPanel card = new JPanel(layout);
+        card.setBackground(new Color(43, 43, 43));
+        card.setBorder(BorderFactory.createLineBorder(new Color(52, 52, 52)));
+        return card;
+    }
+
+    private void styleScrollPane(JScrollPane scroll) {
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.getViewport().setBackground(new Color(43, 43, 43));
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
+    }
+
+    private void JTableHeaderStyle(JTable table) {
+        table.getTableHeader().setBackground(new Color(37, 37, 37));
+        table.getTableHeader().setForeground(new Color(165, 165, 165));
+        table.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 10));
+        table.getTableHeader().setPreferredSize(new Dimension(0, 34));
+        table.getTableHeader().setReorderingAllowed(false);
+    }
+
     private JComponent buildStatus() {
         statusLabel = new JLabel("Ready");
         statusLabel.setBorder(new EmptyBorder(7, 14, 7, 14));
         statusLabel.setOpaque(true);
-        statusLabel.setBackground(new Color(235, 240, 246));
+        statusLabel.setBackground(new Color(27, 27, 27));
+        statusLabel.setForeground(new Color(155, 155, 155));
         return statusLabel;
     }
 
@@ -268,6 +449,7 @@ public class FileNestApp {
         tableModel.setRowCount(0);
         FolderNode folder = fs.folders.get(currentFolderId);
         if (folder == null) { currentFolderId = "root"; folder = fs.root; }
+        if (pathLabel != null) pathLabel.setText("Home  /  " + fs.folderPath(folder).replace("/", "  /  "));
         for (FsNode node : folder.sortedChildren.values()) {
             if (node instanceof FileNode f) {
                 FileRecord r = fs.records.get(f.id);
@@ -276,6 +458,50 @@ public class FileNestApp {
                 tableModel.addRow(new Object[]{f.name, "Folder", formatBytes(fs.folderSize(f)), "—", "—", f.id});
             }
         }
+        if (previewName != null) updatePreviewPanel();
+    }
+
+    private void updatePreviewPanel() {
+        int row = fileTable == null ? -1 : fileTable.getSelectedRow();
+        if (row < 0) {
+            previewIcon.setIcon(null);
+            previewIcon.setText("▧");
+            previewName.setText("Choose a file");
+            previewMeta.setText("File information will appear here");
+            previewHint.setText("Select an item from the list");
+            return;
+        }
+        String id = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(row), 5));
+        FsNode node;
+        try { node = fs.findNodeForUi(id); } catch (RuntimeException ex) { return; }
+        if (node instanceof FolderNode folder) {
+            previewIcon.setIcon(null); previewIcon.setText("📁");
+            previewName.setText(folder.name);
+            previewMeta.setText(fs.countFiles(folder) + " files  •  " + formatBytes(fs.folderSize(folder)));
+            previewHint.setText("Folder");
+            return;
+        }
+        FileRecord record = fs.records.get(id);
+        if (record == null) return;
+        previewName.setText(record.name);
+        previewMeta.setText(formatBytes(record.size) + "  •  " + (record.physicalPath == null ? "FileNest file" : (record.managedCopy ? "PC copy" : "Direct PC access")));
+        String lower = record.name.toLowerCase(Locale.ROOT);
+        previewIcon.setIcon(null);
+        if (record.physicalPath != null && (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".gif") || lower.endsWith(".bmp"))) {
+            try {
+                Image image = ImageIO.read(Path.of(record.physicalPath).toFile());
+                if (image != null) {
+                    Image scaled = image.getScaledInstance(300, 210, Image.SCALE_SMOOTH);
+                    previewIcon.setText("");
+                    previewIcon.setIcon(new ImageIcon(scaled));
+                } else previewIcon.setText("▧");
+            } catch (IOException ex) { previewIcon.setText("▧"); }
+        } else {
+            previewIcon.setText(lower.endsWith(".pdf") ? "PDF" : (lower.matches(".*\\.(mp4|mkv|avi|mov)$") ? "▶" : "▤"));
+            previewIcon.setFont(new Font("SansSerif", Font.BOLD, 62));
+            previewIcon.setForeground(new Color(242, 190, 55));
+        }
+        previewHint.setText(record.physicalPath == null ? "Simulated content" : "Opens with your PC's default app");
     }
 
     private void refreshStorage() {
