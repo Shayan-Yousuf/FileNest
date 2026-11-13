@@ -127,6 +127,12 @@ public class FileNestApp {
         upper.add(sidebarButton("▧   Pictures", () -> choosePcFolder("Pictures")));
         upper.add(sidebarButton("▣   Desktop", () -> choosePcFolder("Desktop")));
         upper.add(Box.createVerticalStrut(15));
+        upper.add(sidebarHeading("DRIVES"));
+        for (File drive : File.listRoots()) {
+            String driveName = drive.getPath();
+            upper.add(sidebarButton("▰   " + driveName, () -> browseDrive(drive)));
+        }
+        upper.add(Box.createVerticalStrut(15));
         upper.add(sidebarHeading("FILENEST FOLDERS"));
 
         DefaultMutableTreeNode root = new DefaultMutableTreeNode(new FolderRef("root", "⌂  Home"));
@@ -196,6 +202,23 @@ public class FileNestApp {
         button.setAlignmentX(Component.LEFT_ALIGNMENT);
         button.addActionListener(e -> action.run());
         return button;
+    }
+
+    private void browseDrive(File drive) {
+        JFileChooser chooser = new JFileChooser(drive);
+        chooser.setDialogTitle("Browse " + drive.getPath() + " — choose files to add as direct links");
+        chooser.setMultiSelectionEnabled(true);
+        chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+        if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return;
+        File[] files = chooser.getSelectedFiles();
+        if (files.length == 0 && chooser.getSelectedFile() != null) files = new File[]{chooser.getSelectedFile()};
+        int added = 0;
+        for (File file : files) {
+            try { fs.addPhysicalFile(currentFolderId, file.toPath(), false); added++; }
+            catch (Exception ex) { error(ex.getMessage()); }
+        }
+        refreshAll();
+        status(added + " file(s) linked from " + drive.getPath() + ".");
     }
 
     private void choosePcFolder(String folderName) {
