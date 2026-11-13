@@ -142,7 +142,7 @@ public class FileNestApp {
         upper.add(sidebarButton("▣   Downloads", () -> browsePcFolder(Path.of(System.getProperty("user.home"), "Downloads"))));
         upper.add(sidebarButton("▣   Documents", () -> browsePcFolder(Path.of(System.getProperty("user.home"), "Documents"))));
         upper.add(sidebarButton("▧   Pictures", () -> browsePcFolder(Path.of(System.getProperty("user.home"), "Pictures"))));
-        upper.add(sidebarButton("▣   Desktop", () -> browsePcFolder(Path.of(System.getProperty("user.home"), "Desktop")));
+        upper.add(sidebarButton("▣   Desktop", () -> browsePcFolder(Path.of(System.getProperty("user.home"), "Desktop"))));
         upper.add(Box.createVerticalStrut(15));
         upper.add(sidebarHeading("DRIVES"));
         for (File drive : File.listRoots()) {
