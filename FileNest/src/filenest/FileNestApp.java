@@ -40,6 +40,7 @@ public class FileNestApp {
     private boolean darkTheme = true;
     private Path pcBrowsePath;
     private final Map<String, File> pcBrowseEntries = new LinkedHashMap<>();
+    private final Map<String, ImageIcon> thumbnailCache = new HashMap<>();
     private String currentFolderId = "root";
     private final Deque<String> accessHistory = new ArrayDeque<>();
 
@@ -141,8 +142,8 @@ public class FileNestApp {
         upper.add(sidebarHeading("PINNED"));
         upper.add(sidebarButton("▣   Downloads", () -> browsePcFolder(Path.of(System.getProperty("user.home"), "Downloads"))));
         upper.add(sidebarButton("▣   Documents", () -> browsePcFolder(Path.of(System.getProperty("user.home"), "Documents"))));
-        upper.add(sidebarButton("▧   Pictures", () -> browsePcFolder(Path.of(System.getProperty("user.home"), "Pictures"))));
-        upper.add(sidebarButton("▣   Desktop", () -> browsePcFolder(Path.of(System.getProperty("user.home"), "Desktop"))));
+        upper.add(sidebarButton("▧   Pictures", () -> browsePcFolder(resolveWindowsKnownFolder("MyPictures", "Pictures"))));
+        upper.add(sidebarButton("▣   Desktop", () -> browsePcFolder(resolveWindowsKnownFolder("Desktop", "Desktop")));
         upper.add(Box.createVerticalStrut(15));
         upper.add(sidebarHeading("DRIVES"));
         for (File drive : File.listRoots()) {
@@ -227,6 +228,52 @@ public class FileNestApp {
         return button;
     }
 
+    private Path resolveWindowsKnownFolder(String specialFolder, String fallbackName) {
+        if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
+            try {
+                Process process = new ProcessBuilder("powershell.exe", "-NoProfile", "-Command",
+                        "[Environment]::GetFolderPath('" + specialFolder + "')")
+                        .redirectErrorStream(true).start();
+                if (process.waitFor(4, java.util.concurrent.TimeUnit.SECONDS)) {
+                    String resolved = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+                    if (!resolved.isBlank()) {
+                        Path path = Path.of(resolved);
+                        if (Files.isDirectory(path)) return path;
+                    }
+                } else process.destroyForcibly();
+            } catch (Exception ignored) { }
+        }
+        List<Path> candidates = new ArrayList<>();
+        String home = System.getProperty("user.home");
+        candidates.add(Path.of(home, fallbackName));
+        String oneDrive = System.getenv("OneDrive");
+        if (oneDrive != null && !oneDrive.isBlank()) candidates.add(Path.of(oneDrive, fallbackName));
+        String oneDriveConsumer = System.getenv("OneDriveConsumer");
+        if (oneDriveConsumer != null && !oneDriveConsumer.isBlank()) candidates.add(Path.of(oneDriveConsumer, fallbackName));
+        candidates.add(Path.of(home, "OneDrive", fallbackName));
+        candidates.add(Path.of(home, "OneDrive - Personal", fallbackName));
+        for (Path candidate : candidates) if (Files.isDirectory(candidate)) return candidate;
+        return candidates.get(0);
+    }
+
+    private ImageIcon getThumbnail(File file, int width, int height) {
+        String cacheKey = file.getAbsolutePath() + "|" + file.lastModified() + "|" + width + "x" + height;
+        if (thumbnailCache.containsKey(cacheKey)) return thumbnailCache.get(cacheKey);
+        try {
+            Image image = ImageIO.read(file);
+            if (image == null) return null;
+            double scale = Math.min((double) width / image.getWidth(), (double) height / image.getHeight());
+            int scaledWidth = Math.max(1, (int) Math.round(image.getWidth() * scale));
+            int scaledHeight = Math.max(1, (int) Math.round(image.getHeight() * scale));
+            Image scaled = image.getScaledInstance(scaledWidth, scaledHeight, Image.SCALE_SMOOTH);
+            ImageIcon icon = new ImageIcon(scaled);
+            thumbnailCache.put(cacheKey, icon);
+            return icon;
+        } catch (IOException | RuntimeException ex) {
+            return null;
+        }
+    }
+
     private void browseDrive(File drive) {
         browsePcFolder(drive.toPath());
     }
@@ -307,6 +354,23 @@ public class FileNestApp {
         fileTable.setRowSelectionAllowed(true);
         fileTable.setGridColor(new Color(48, 48, 48));
         fileTable.setTableHeader(null);
+        fileTable.getColumnModel().getColumn(0).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override public Component getTableCellRendererComponent(JTable table, Object value, boolean selected,
+                    boolean focused, int row, int column) {
+                JLabel label = (JLabel) super.getTableCellRendererComponent(table, value, selected, focused, row, column);
+                label.setBorder(new EmptyBorder(2, 8, 2, 4));
+                label.setIcon(null);
+                label.setIconTextGap(10);
+                int modelRow = table.convertRowIndexToModel(row);
+                String key = String.valueOf(table.getModel().getValueAt(modelRow, 5));
+                File imageFile = pcBrowseEntries.get(key);
+                if (imageFile != null && imageFile.isFile()) {
+                    ImageIcon thumbnail = getThumbnail(imageFile, 38, 38);
+                    if (thumbnail != null) label.setIcon(thumbnail);
+                }
+                return label;
+            }
+        });
         fileTable.setShowHorizontalLines(false);
         fileTable.setShowVerticalLines(false);
         fileTable.getColumnModel().getColumn(0).setPreferredWidth(360);
@@ -583,6 +647,12 @@ public class FileNestApp {
 
     private void refreshTable() {
         tableModel.setRowCount(0);
+        thumbnailCache.keySet().removeIf(key -> {
+            int split = key.lastIndexOf('|');
+            if (split < 0) return true;
+            String path = key.substring(0, split);
+            return !Files.exists(Path.of(path));
+        });
         if (pcBrowsePath != null) {
             pcBrowseEntries.clear();
             if (pathLabel != null) pathLabel.setText(pcBrowsePath.toString());
@@ -625,6 +695,13 @@ public class FileNestApp {
             if (entry == null) return;
             previewIcon.setIcon(null);
             previewIcon.setText(entry.isDirectory() ? "📁" : "▤");
+            if (entry.isFile()) {
+                ImageIcon thumbnail = getThumbnail(entry, 300, 210);
+                if (thumbnail != null) {
+                    previewIcon.setText("");
+                    previewIcon.setIcon(thumbnail);
+                }
+            }
             previewName.setText(entry.getName());
             previewMeta.setText(entry.isFile() ? formatBytes(entry.length()) + "  •  Original PC file" : "Folder  •  Direct PC access");
             previewHint.setText(entry.isDirectory() ? "Double-click to browse this folder" : "Opens with your PC's default application");
