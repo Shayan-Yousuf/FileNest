@@ -345,7 +345,7 @@ public class FileNestApp {
             createButton("Move", false), createButton("Delete", false),
             createButton("Undo", false), createButton("Cleanup", false),
             createButton("History", false), createButton("Analyze", false),
-            createButton("Save", false), createButton("Load", false)
+            createButton("Scan", true), createButton("Save", false), createButton("Load", false)
         };
         buttons[0].addActionListener(e -> importFiles());
         buttons[1].addActionListener(e -> renameSelected());
@@ -355,8 +355,9 @@ public class FileNestApp {
         buttons[5].addActionListener(e -> showCleanup());
         buttons[6].addActionListener(e -> showHistory());
         buttons[7].addActionListener(e -> showAnalytics());
-        buttons[8].addActionListener(e -> saveSnapshot());
-        buttons[9].addActionListener(e -> loadSnapshot());
+        buttons[8].addActionListener(e -> scanSelection());
+        buttons[9].addActionListener(e -> saveSnapshot());
+        buttons[10].addActionListener(e -> loadSnapshot());
         for (JButton button : buttons) actions.add(button);
         top.add(actions, BorderLayout.CENTER);
         panel.add(top, BorderLayout.NORTH);
@@ -882,6 +883,205 @@ public class FileNestApp {
         previewPanel.setPreferredSize(new Dimension(650, 380));
         JOptionPane.showMessageDialog(frame, previewPanel, "File Preview", JOptionPane.PLAIN_MESSAGE);
         status("Previewing " + record.name + ".");
+    }
+
+    // Lightweight heuristic scan: this is a warning aid, not a certified antivirus.
+    private static final Set<String> RISKY_EXTENSIONS = Set.of(
+            ".exe", ".dll", ".scr", ".com", ".msi", ".bat", ".cmd",
+            ".ps1", ".vbs", ".js", ".hta", ".jar", ".reg", ".wsf");
+    private static final Set<String> SCRIPT_EXTENSIONS = Set.of(
+            ".bat", ".cmd", ".ps1", ".vbs", ".js", ".hta", ".wsf", ".sh", ".py");
+
+    private void scanSelection() {
+        List<String> findings = new ArrayList<>();
+        List<Path> cleanableScripts = new ArrayList<>();
+        List<FileRecord> simulatedRecords = new ArrayList<>();
+        int[] scanned = {0};
+
+        try {
+            if (pcBrowsePath != null) {
+                int row = fileTable.getSelectedRow();
+                Path target = pcBrowsePath;
+                if (row >= 0) {
+                    String key = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(row), 5));
+                    File entry = pcBrowseEntries.get(key);
+                    if (entry != null) target = entry.toPath();
+                }
+                scanPath(target, findings, cleanableScripts, scanned);
+            } else {
+                FsNode selected = null;
+                int row = fileTable.getSelectedRow();
+                if (row >= 0) {
+                    String id = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(row), 5));
+                    try { selected = fs.findNode(id); } catch (RuntimeException ignored) { }
+                }
+                if (selected == null) selected = fs.folders.get(currentFolderId);
+                scanFileSystemNode(selected, findings, cleanableScripts, simulatedRecords, scanned);
+            }
+        } catch (RuntimeException ex) {
+            error("Scan could not be completed: " + ex.getMessage());
+            return;
+        }
+
+        StringBuilder report = new StringBuilder();
+        report.append("Files checked: ").append(scanned[0])
+              .append("\nPotential warnings: ").append(findings.size());
+        if (findings.isEmpty()) {
+            report.append("\n\nNo suspicious patterns were detected by FileNest's basic scanner.");
+        } else {
+            report.append("\n\nFindings (heuristic warnings):");
+            int shown = Math.min(20, findings.size());
+            for (int i = 0; i < shown; i++) report.append("\n• ").append(findings.get(i));
+            if (findings.size() > shown) report.append("\n…and ").append(findings.size() - shown).append(" more.");
+        }
+
+        if (!cleanableScripts.isEmpty()) {
+            report.append("\n\n").append(cleanableScripts.size())
+                  .append(" script file(s) contain suspicious command lines.");
+            report.append("\nFileNest can create cleaned copies with matching lines removed. Originals will not be changed.");
+            int choice = JOptionPane.showConfirmDialog(frame, report.toString() + "\n\nCreate cleaned copies now?",
+                    "FileNest Security Scan", JOptionPane.YES_NO_OPTION, findings.isEmpty()
+                            ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
+            if (choice == JOptionPane.YES_OPTION) createCleanedCopies(cleanableScripts);
+        } else {
+            JOptionPane.showMessageDialog(frame, report.toString()
+                    + "\n\nNo files were modified. Files that look risky need review with a trusted antivirus.",
+                    "FileNest Security Scan", findings.isEmpty()
+                            ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
+        }
+        status("Security scan finished: " + scanned[0] + " file(s), " + findings.size() + " warning(s).");
+    }
+
+    private void scanFileSystemNode(FsNode node, List<String> findings, List<Path> cleanableScripts,
+                                    List<FileRecord> simulatedRecords, int[] scanned) {
+        if (node == null) return;
+        if (node instanceof FileNode) {
+            FileRecord record = fs.records.get(node.id);
+            if (record == null) return;
+            scanned[0]++;
+            if (record.physicalPath != null && Files.isRegularFile(Path.of(record.physicalPath))) {
+                scanSingleFile(Path.of(record.physicalPath), findings, cleanableScripts);
+            } else {
+                List<String> suspicious = suspiciousLines(record.content == null ? "" : record.content);
+                String ext = extensionOf(record.name);
+                if (RISKY_EXTENSIONS.contains(ext) || !suspicious.isEmpty()) {
+                    findings.add(record.name + " — " + (suspicious.isEmpty()
+                            ? "potentially executable file type" : "suspicious command/content pattern"));
+                }
+            }
+            return;
+        }
+        if (node instanceof FolderNode folder) {
+            for (FsNode child : folder.sortedChildren.values())
+                scanFileSystemNode(child, findings, cleanableScripts, simulatedRecords, scanned);
+        }
+    }
+
+    private void scanPath(Path target, List<String> findings, List<Path> cleanableScripts, int[] scanned) {
+        if (Files.isRegularFile(target)) {
+            scanned[0]++;
+            scanSingleFile(target, findings, cleanableScripts);
+            return;
+        }
+        if (!Files.isDirectory(target) || !Files.isReadable(target)) {
+            findings.add(target + " — unavailable or unreadable");
+            return;
+        }
+        try (java.util.stream.Stream<Path> paths = Files.walk(target)) {
+            paths.filter(Files::isRegularFile).limit(5000).forEach(path -> {
+                scanned[0]++;
+                scanSingleFile(path, findings, cleanableScripts);
+            });
+        } catch (IOException | SecurityException ex) {
+            findings.add(target + " — could not fully scan: " + ex.getMessage());
+        }
+    }
+
+    private void scanSingleFile(Path path, List<String> findings, List<Path> cleanableScripts) {
+        String ext = extensionOf(path.getFileName().toString());
+        boolean riskyType = RISKY_EXTENSIONS.contains(ext);
+        List<String> suspicious = List.of();
+        if (SCRIPT_EXTENSIONS.contains(ext)) {
+            try {
+                long size = Files.size(path);
+                if (size <= 2L * 1024 * 1024) {
+                    String content = Files.readString(path, StandardCharsets.UTF_8);
+                    suspicious = suspiciousLines(content);
+                    if (!suspicious.isEmpty()) cleanableScripts.add(path);
+                }
+            } catch (IOException | RuntimeException ex) {
+                findings.add(path.getFileName() + " — script could not be inspected");
+            }
+        }
+        if (riskyType || !suspicious.isEmpty()) {
+            String reason = !suspicious.isEmpty() ? "suspicious script command(s) detected"
+                    : "potentially executable file type (" + ext + ")";
+            findings.add(path + " — " + reason);
+        }
+    }
+
+    private List<String> suspiciousLines(String content) {
+        List<String> matches = new ArrayList<>();
+        if (content == null || content.isBlank()) return matches;
+        String[] signatures = {
+            "powershell -enc", "frombase64string", "downloadstring(",
+            "invoke-expression", "iex(", "certutil -decode", "bitsadmin ",
+            "mshta ", "wscript.shell", "createobject(", "rundll32 ",
+            "regsvr32 ", "cmd /c", "start-process"
+        };
+        for (String line : content.split("\\R", -1)) {
+            String lower = line.toLowerCase(Locale.ROOT);
+            for (String signature : signatures) {
+                if (lower.contains(signature)) {
+                    matches.add(line);
+                    break;
+                }
+            }
+        }
+        return matches;
+    }
+
+    private String extensionOf(String name) {
+        int dot = name.lastIndexOf('.');
+        return dot < 0 ? "" : name.substring(dot).toLowerCase(Locale.ROOT);
+    }
+
+    private void createCleanedCopies(List<Path> scripts) {
+        Path output = Path.of(System.getProperty("user.home"), "FileNest_Cleaned");
+        int created = 0;
+        try {
+            Files.createDirectories(output);
+            for (Path source : scripts) {
+                if (!Files.isRegularFile(source) || Files.size(source) > 2L * 1024 * 1024) continue;
+                String original = Files.readString(source, StandardCharsets.UTF_8);
+                List<String> kept = new ArrayList<>();
+                for (String line : original.split("\\R", -1)) {
+                    if (suspiciousLines(line).isEmpty()) kept.add(line);
+                }
+                String cleaned = String.join(System.lineSeparator(), kept);
+                if (cleaned.equals(original)) continue;
+                String base = source.getFileName().toString();
+                int dot = base.lastIndexOf('.');
+                String name = dot > 0 ? base.substring(0, dot) + "_cleaned" + base.substring(dot)
+                        : base + "_cleaned";
+                Path destination = output.resolve(name);
+                int suffix = 1;
+                while (Files.exists(destination)) {
+                    String candidate = dot > 0 ? base.substring(0, dot) + "_cleaned_" + suffix + base.substring(dot)
+                            : base + "_cleaned_" + suffix;
+                    destination = output.resolve(candidate);
+                    suffix++;
+                }
+                Files.writeString(destination, cleaned, StandardCharsets.UTF_8);
+                created++;
+            }
+            JOptionPane.showMessageDialog(frame, created + " cleaned copy/copies created in:\n" + output
+                    + "\n\nOriginal files were left unchanged. Review each copy before using it; automatic line removal can break scripts.",
+                    "Cleaned copies created", JOptionPane.INFORMATION_MESSAGE);
+            status(created + " cleaned copy/copies saved to " + output);
+        } catch (IOException | SecurityException ex) {
+            error("Could not create cleaned copies: " + ex.getMessage());
+        }
     }
 
     private void importFiles() {
