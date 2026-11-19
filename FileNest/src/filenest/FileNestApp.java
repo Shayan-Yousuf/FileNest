@@ -419,6 +419,23 @@ public class FileNestApp {
         fileTable.setRowHeight(43);
         fileTable.setFillsViewportHeight(true);
         fileTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        // Keyboard shortcuts must work whenever the file list has focus.
+        InputMap fileInputMap = fileTable.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
+        ActionMap fileActionMap = fileTable.getActionMap();
+        fileInputMap.put(KeyStroke.getKeyStroke("DELETE"), "filenest-delete-selected");
+        fileActionMap.put("filenest-delete-selected", new AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                if (fileTable.getSelectedRow() >= 0) deleteSelected();
+                else status("Select a file or folder first, then press Delete.");
+            }
+        });
+        fileInputMap.put(KeyStroke.getKeyStroke("BACK_SPACE"), "filenest-go-back");
+        fileActionMap.put("filenest-go-back", new AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) {
+                navigateBack();
+            }
+        });
         fileTable.setShowGrid(false);
         fileTable.setIntercellSpacing(new Dimension(0, 0));
         fileTable.setAutoResizeMode(JTable.AUTO_RESIZE_LAST_COLUMN);
