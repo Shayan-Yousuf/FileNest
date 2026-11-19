@@ -26,18 +26,625 @@ import java.util.List;
  * Java 17+, Swing GUI, in-memory simulated file system.
  */
 public class FileNestApp {
-    final FileSystemManager fs = new FileSystemManager();
-    final FileNestGUI gui = new FileNestGUI(this);
-    Path pcBrowsePath;
-    final Map<String, File> pcBrowseEntries = new LinkedHashMap<>();
-    String currentFolderId = "root";
-    final Deque<String> accessHistory = new ArrayDeque<>();
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> new FileNestApp().start());
-    }
-    void start() { fs.seedDemoData(); gui.show(); }
+    private final FileSystemManager fs = new FileSystemManager();
+    private JFrame frame;
+    private JTree folderTree;
+    private DefaultTreeModel treeModel;
+    private DefaultTableModel tableModel;
+    private JTable fileTable;
+    private JLabel statusLabel, storageLabel;
+    private JProgressBar storageBar;
+    private JTextField searchField;
+    private JLabel pathLabel, previewIcon, previewName, previewMeta, previewHint;
+    private JButton previewOpenButton;
+    private JButton themeToggleButton;
+    private boolean darkTheme = true;
+    private Path pcBrowsePath;
+    private final Map<String, File> pcBrowseEntries = new LinkedHashMap<>();
+    private final Map<String, ImageIcon> thumbnailCache = new HashMap<>();
+    private String currentFolderId = "root";
+    private final Deque<String> accessHistory = new ArrayDeque<>();
 
-    void refreshAll() {
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new FileNestApp().show());
+    }
+
+    private void show() {
+        fs.seedDemoData();
+        frame = new JFrame("FileNest | Real + Simulated File Manager");
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setMinimumSize(new Dimension(1000, 650));
+        frame.getContentPane().setBackground(new Color(29, 29, 29));
+        frame.setLayout(new BorderLayout());
+        frame.add(buildHeader(), BorderLayout.NORTH);
+        frame.add(buildMain(), BorderLayout.CENTER);
+        frame.add(buildStatus(), BorderLayout.SOUTH);
+        applyTheme();
+        refreshAll();
+        frame.setLocationByPlatform(true);
+        frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
+        frame.setVisible(true);
+        frame.addWindowFocusListener(new java.awt.event.WindowAdapter() {
+            @Override public void windowGainedFocus(java.awt.event.WindowEvent e) {
+                if (pcBrowsePath != null && Files.isDirectory(pcBrowsePath)) {
+                    SwingUtilities.invokeLater(() -> {
+                        refreshTable();
+                        fileTable.revalidate();
+                        fileTable.repaint();
+                    });
+                }
+            }
+        });
+    }
+
+    private JComponent buildHeader() {
+        JPanel header = new JPanel(new BorderLayout(14, 0));
+        header.setBorder(new EmptyBorder(12, 16, 12, 16));
+        header.setBackground(new Color(31, 31, 31));
+
+        JLabel brand = new JLabel("▣  FileNest");
+        brand.setForeground(new Color(245, 245, 245));
+        brand.setFont(new Font("SansSerif", Font.BOLD, 21));
+        header.add(brand, BorderLayout.WEST);
+
+        JPanel address = new JPanel(new BorderLayout(8, 0));
+        address.setBackground(new Color(43, 43, 43));
+        address.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(55, 55, 55)),
+                new EmptyBorder(8, 14, 8, 14)));
+        pathLabel = new JLabel("Home  /  All files");
+        pathLabel.setForeground(new Color(205, 205, 205));
+        pathLabel.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        address.add(pathLabel, BorderLayout.CENTER);
+        header.add(address, BorderLayout.CENTER);
+
+        JPanel search = new JPanel(new BorderLayout(6, 0));
+        search.setOpaque(false);
+        searchField = new JTextField();
+        searchField.setPreferredSize(new Dimension(210, 34));
+        searchField.setToolTipText("Search file names using Trie prefix search");
+        styleInput(searchField);
+        JButton searchButton = createButton("Search", true);
+        searchButton.addActionListener(e -> searchFiles());
+        searchField.addActionListener(e -> searchFiles());
+        search.add(searchField, BorderLayout.CENTER);
+        search.add(searchButton, BorderLayout.EAST);
+        themeToggleButton = createButton("☀ Light mode", false);
+        themeToggleButton.setToolTipText("Switch between dark and light appearance");
+        themeToggleButton.addActionListener(e -> {
+            darkTheme = !darkTheme;
+            applyTheme();
+        });
+        JPanel headerActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        headerActions.setOpaque(false);
+        headerActions.add(search);
+        headerActions.add(themeToggleButton);
+        header.add(headerActions, BorderLayout.EAST);
+        return header;
+    }
+
+    private JComponent buildMain() {
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, buildSidebar(), buildWorkspace());
+        split.setBorder(null);
+        split.setContinuousLayout(true);
+        split.setOneTouchExpandable(true);
+        split.setDividerSize(5);
+        split.setBackground(new Color(29, 29, 29));
+        split.setResizeWeight(0.20);
+        split.setDividerLocation(218);
+        split.setMinimumSize(new Dimension(700, 400));
+        return split;
+    }
+
+    private JComponent buildSidebar() {
+        JPanel panel = new JPanel(new BorderLayout(8, 10));
+        panel.setBorder(new EmptyBorder(18, 12, 14, 10));
+        panel.setBackground(new Color(36, 36, 36));
+        panel.setMinimumSize(new Dimension(190, 300));
+        panel.setPreferredSize(new Dimension(218, 600));
+
+        JPanel upper = new JPanel();
+        upper.setOpaque(false);
+        upper.setLayout(new BoxLayout(upper, BoxLayout.Y_AXIS));
+        JLabel tabs = sidebarHeading("WORKSPACE");
+        upper.add(tabs);
+        upper.add(sidebarButton("⌂   Home", () -> { pcBrowsePath = null; currentFolderId = "root"; refreshAll(); }));
+        upper.add(sidebarButton("＋   Import files", this::importFiles));
+        upper.add(Box.createVerticalStrut(15));
+        upper.add(sidebarHeading("PINNED"));
+        upper.add(sidebarButton("▣   Downloads", () -> browsePcFolder(Path.of(System.getProperty("user.home"), "Downloads"))));
+        upper.add(sidebarButton("▣   Documents", () -> browsePcFolder(Path.of(System.getProperty("user.home"), "Documents"))));
+        upper.add(sidebarButton("▧   Pictures", () -> browsePcFolder(resolveWindowsKnownFolder("MyPictures", "Pictures"))));
+        upper.add(sidebarButton("▣   Desktop", () -> browsePcFolder(resolveWindowsKnownFolder("Desktop", "Desktop"))));
+        upper.add(Box.createVerticalStrut(15));
+        upper.add(sidebarHeading("DRIVES"));
+        for (File drive : File.listRoots()) {
+            String driveName = drive.getPath();
+            upper.add(sidebarButton("▰   " + driveName, () -> browseDrive(drive)));
+        }
+        upper.add(Box.createVerticalStrut(15));
+        upper.add(sidebarHeading("FILENEST FOLDERS"));
+
+        DefaultMutableTreeNode root = new DefaultMutableTreeNode(new FolderRef("root", "⌂  Home"));
+        folderTree = new JTree(root);
+        folderTree.setRootVisible(true);
+        folderTree.setShowsRootHandles(true);
+        folderTree.setRowHeight(27);
+        folderTree.setBackground(new Color(37, 37, 37));
+        folderTree.setForeground(new Color(135, 190, 250));
+        folderTree.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        folderTree.setBorder(new EmptyBorder(5, 2, 5, 2));
+        folderTree.setCellRenderer(new DefaultTreeCellRenderer() {
+            @Override public Component getTreeCellRendererComponent(JTree tree, Object value, boolean selected,
+                    boolean expanded, boolean leaf, int row, boolean hasFocus) {
+                JLabel label = (JLabel) super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
+                label.setOpaque(true);
+                label.setBackground(selected ? (darkTheme ? new Color(35, 65, 96) : new Color(205, 228, 250))
+                        : (darkTheme ? new Color(37, 37, 37) : new Color(250, 252, 255)));
+                label.setForeground(selected ? new Color(35, 125, 215)
+                        : (darkTheme ? new Color(205, 220, 238) : new Color(45, 65, 88)));
+                label.setBorder(new EmptyBorder(3, 4, 3, 4));
+                return label;
+            }
+        });
+        folderTree.addTreeSelectionListener(e -> {
+            Object node = folderTree.getLastSelectedPathComponent();
+            if (node instanceof DefaultMutableTreeNode dm && dm.getUserObject() instanceof FolderRef ref) {
+                pcBrowsePath = null;
+                currentFolderId = ref.id;
+                refreshTable();
+            }
+        });
+        treeModel = (DefaultTreeModel) folderTree.getModel();
+
+        JPanel treeArea = new JPanel(new BorderLayout());
+        treeArea.setOpaque(false);
+        JScrollPane folderScroll = new JScrollPane(folderTree);
+        styleScrollPane(folderScroll);
+        folderScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        treeArea.add(folderScroll, BorderLayout.CENTER);
+        upper.add(treeArea);
+        panel.add(upper, BorderLayout.CENTER);
+
+        JPanel actions = new JPanel(new GridLayout(2, 1, 7, 7));
+        actions.setOpaque(false);
+        JButton newFolder = createButton("+ New Folder", false);
+        newFolder.addActionListener(e -> createFolder());
+        JButton newFile = createButton("+ New File", false);
+        newFile.addActionListener(e -> createFile());
+        actions.add(newFolder);
+        actions.add(newFile);
+        panel.add(actions, BorderLayout.SOUTH);
+        return panel;
+    }
+
+    private JLabel sidebarHeading(String text) {
+        JLabel label = new JLabel(text);
+        label.setForeground(new Color(145, 145, 145));
+        label.setFont(new Font("SansSerif", Font.BOLD, 10));
+        label.setBorder(new EmptyBorder(9, 8, 6, 4));
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return label;
+    }
+
+    private JButton sidebarButton(String text, Runnable action) {
+        JButton button = new JButton(text);
+        button.setHorizontalAlignment(SwingConstants.LEFT);
+        button.setForeground(new Color(215, 215, 215));
+        button.setBackground(new Color(37, 37, 37));
+        button.setBorder(new EmptyBorder(8, 9, 8, 5));
+        button.setFocusPainted(false);
+        button.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        button.setAlignmentX(Component.LEFT_ALIGNMENT);
+        button.addActionListener(e -> action.run());
+        return button;
+    }
+
+    private Path resolveWindowsKnownFolder(String specialFolder, String fallbackName) {
+        if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
+            try {
+                Process process = new ProcessBuilder("powershell.exe", "-NoProfile", "-Command",
+                        "[Environment]::GetFolderPath('" + specialFolder + "')")
+                        .redirectErrorStream(true).start();
+                if (process.waitFor(4, java.util.concurrent.TimeUnit.SECONDS)) {
+                    String resolved = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+                    if (!resolved.isBlank()) {
+                        Path path = Path.of(resolved);
+                        if (Files.isDirectory(path)) return path;
+                    }
+                } else process.destroyForcibly();
+            } catch (Exception ignored) { }
+        }
+        List<Path> candidates = new ArrayList<>();
+        String home = System.getProperty("user.home");
+        candidates.add(Path.of(home, fallbackName));
+        String oneDrive = System.getenv("OneDrive");
+        if (oneDrive != null && !oneDrive.isBlank()) candidates.add(Path.of(oneDrive, fallbackName));
+        String oneDriveConsumer = System.getenv("OneDriveConsumer");
+        if (oneDriveConsumer != null && !oneDriveConsumer.isBlank()) candidates.add(Path.of(oneDriveConsumer, fallbackName));
+        candidates.add(Path.of(home, "OneDrive", fallbackName));
+        candidates.add(Path.of(home, "OneDrive - Personal", fallbackName));
+        for (Path candidate : candidates) if (Files.isDirectory(candidate)) return candidate;
+        return candidates.get(0);
+    }
+
+    private boolean isImageFile(File file) {
+        String name = file.getName().toLowerCase(Locale.ROOT);
+        return name.matches(".*\\.(png|jpe?g|gif|bmp|wbmp|tif|tiff)$");
+    }
+
+    private ImageIcon getThumbnail(File file, int width, int height) {
+        if (file == null || !file.isFile() || !isImageFile(file)) return null;
+        String cacheKey = file.getAbsolutePath() + "|" + file.lastModified() + "|" + width + "x" + height;
+        if (thumbnailCache.containsKey(cacheKey)) return thumbnailCache.get(cacheKey);
+        try {
+            Image image = ImageIO.read(file);
+            if (image == null) return null;
+            double scale = Math.min((double) width / image.getWidth(null), (double) height / image.getHeight(null));
+            int scaledWidth = Math.max(1, (int) Math.round(image.getWidth(null) * scale));
+            int scaledHeight = Math.max(1, (int) Math.round(image.getHeight(null) * scale));
+            Image scaled = image.getScaledInstance(scaledWidth, scaledHeight, Image.SCALE_SMOOTH);
+            ImageIcon icon = new ImageIcon(scaled);
+            thumbnailCache.put(cacheKey, icon);
+            return icon;
+        } catch (IOException | RuntimeException ex) {
+            return null;
+        }
+    }
+
+    private void browseDrive(File drive) {
+        browsePcFolder(drive.toPath());
+    }
+
+    private void browsePcFolder(Path directory) {
+        if (!Files.isDirectory(directory) || !Files.isReadable(directory)) {
+            error("This folder is unavailable or you do not have permission to access it.");
+            return;
+        }
+        pcBrowsePath = directory.toAbsolutePath().normalize();
+        currentFolderId = "root";
+        if (fileTable != null) fileTable.clearSelection();
+        pcBrowseEntries.clear();
+        if (pathLabel != null) pathLabel.setText(pcBrowsePath.toString());
+        refreshTable();
+        if (fileTable != null) {
+            fileTable.revalidate();
+            fileTable.repaint();
+        }
+        updatePreviewPanel();
+        status("Browsing PC folder directly: " + pcBrowsePath);
+    }
+
+    private void choosePcFolder(String folderName) {
+        browsePcFolder(Path.of(System.getProperty("user.home"), folderName));
+    }
+
+    private JComponent buildWorkspace() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBorder(new EmptyBorder(10, 10, 12, 12));
+        panel.setBackground(new Color(29, 29, 29));
+
+        JPanel top = new JPanel(new BorderLayout(8, 8));
+        top.setOpaque(false);
+        JPanel headingRow = new JPanel(new BorderLayout());
+        headingRow.setOpaque(false);
+        JLabel heading = new JLabel("Browse files");
+        heading.setForeground(new Color(238, 238, 238));
+        heading.setFont(new Font("SansSerif", Font.BOLD, 18));
+        headingRow.add(heading, BorderLayout.WEST);
+        JLabel hint = new JLabel("Select a file to see its preview");
+        hint.setForeground(new Color(145, 145, 145));
+        hint.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        headingRow.add(hint, BorderLayout.EAST);
+        top.add(headingRow, BorderLayout.NORTH);
+
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        actions.setOpaque(false);
+        JButton[] buttons = {
+            createButton("Import", false), createButton("Rename", false),
+            createButton("Move", false), createButton("Delete", false),
+            createButton("Undo", false), createButton("Cleanup", false),
+            createButton("History", false), createButton("Analyze", false),
+            createButton("Scan", true), createButton("Save", false), createButton("Load", false)
+        };
+        buttons[0].addActionListener(e -> importFiles());
+        buttons[1].addActionListener(e -> renameSelected());
+        buttons[2].addActionListener(e -> moveSelected());
+        buttons[3].addActionListener(e -> deleteSelected());
+        buttons[4].addActionListener(e -> { if (fs.canUndo()) { fs.undo(); refreshAll(); status("Last operation undone."); } else status("Nothing to undo yet."); });
+        buttons[5].addActionListener(e -> showCleanup());
+        buttons[6].addActionListener(e -> showHistory());
+        buttons[7].addActionListener(e -> showAnalytics());
+        buttons[8].addActionListener(e -> scanSelection());
+        buttons[9].addActionListener(e -> saveSnapshot());
+        buttons[10].addActionListener(e -> loadSnapshot());
+        for (JButton button : buttons) actions.add(button);
+        top.add(actions, BorderLayout.CENTER);
+        panel.add(top, BorderLayout.NORTH);
+
+        String[] columns = {"Name", "Type", "Size", "Last Accessed", "Access Count", "ID"};
+        tableModel = new DefaultTableModel(columns, 0) {
+            @Override public boolean isCellEditable(int row, int col) { return false; }
+        };
+        fileTable = new JTable(tableModel);
+        fileTable.setRowHeight(43);
+        fileTable.setFillsViewportHeight(true);
+        fileTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        fileTable.setShowGrid(false);
+        fileTable.setIntercellSpacing(new Dimension(0, 0));
+        fileTable.setAutoResizeMode(JTable.AUTO_RESIZE_LAST_COLUMN);
+        fileTable.setBackground(new Color(43, 43, 43));
+        fileTable.setForeground(new Color(225, 225, 225));
+        fileTable.setSelectionBackground(new Color(65, 65, 65));
+        fileTable.setSelectionForeground(Color.WHITE);
+        fileTable.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        fileTable.setRowSelectionAllowed(true);
+        fileTable.setGridColor(new Color(48, 48, 48));
+        fileTable.setTableHeader(null);
+        fileTable.getColumnModel().getColumn(0).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override public Component getTableCellRendererComponent(JTable table, Object value, boolean selected,
+                    boolean focused, int row, int column) {
+                JLabel label = (JLabel) super.getTableCellRendererComponent(table, value, selected, focused, row, column);
+                label.setBorder(new EmptyBorder(2, 8, 2, 4));
+                label.setIcon(null);
+                label.setIconTextGap(10);
+                int modelRow = table.convertRowIndexToModel(row);
+                String key = String.valueOf(table.getModel().getValueAt(modelRow, 5));
+                File imageFile = pcBrowseEntries.get(key);
+                if (imageFile != null && imageFile.isFile()) {
+                    ImageIcon thumbnail = getThumbnail(imageFile, 38, 38);
+                    if (thumbnail != null) label.setIcon(thumbnail);
+                }
+                return label;
+            }
+        });
+        fileTable.setShowHorizontalLines(false);
+        fileTable.setShowVerticalLines(false);
+        fileTable.getColumnModel().getColumn(0).setPreferredWidth(360);
+        fileTable.removeColumn(fileTable.getColumnModel().getColumn(1));
+        fileTable.removeColumn(fileTable.getColumnModel().getColumn(1));
+        fileTable.setDefaultRenderer(Object.class, new javax.swing.table.DefaultTableCellRenderer() {
+            @Override public Component getTableCellRendererComponent(JTable table, Object value, boolean selected,
+                    boolean focus, int row, int column) {
+                JLabel label = (JLabel) super.getTableCellRendererComponent(table, value, selected, focus, row, column);
+                String name = String.valueOf(value);
+                Object idValue = tableModel.getValueAt(table.convertRowIndexToModel(row), 5);
+                FsNode node = null;
+                String rowId = String.valueOf(idValue);
+                try { node = fs.findNode(rowId); } catch (RuntimeException ignored) { }
+                File pcEntry = pcBrowseEntries.get(rowId);
+                boolean folder = pcEntry != null && pcEntry.isDirectory() || node instanceof FolderNode;
+                label.setText((folder ? "   ▰   " : "   ▧   ") + name);
+                label.setFont(new Font("SansSerif", Font.PLAIN, 13));
+                label.setForeground(selected ? new Color(35, 125, 215)
+                        : (folder ? new Color(45, 135, 220) : (darkTheme ? new Color(215, 225, 238) : new Color(45, 55, 70))));
+                label.setBackground(selected ? (darkTheme ? new Color(38, 65, 92) : new Color(205, 228, 250))
+                        : (darkTheme ? new Color(43, 43, 43) : Color.WHITE));
+                label.setBorder(new EmptyBorder(0, 8, 0, 8));
+                label.setOpaque(true);
+                return label;
+            }
+        });
+        fileTable.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) updatePreviewPanel();
+        });
+        fileTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
+                    if (pcBrowsePath != null) {
+                        int row = fileTable.getSelectedRow();
+                        if (row >= 0) {
+                            String key = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(row), 5));
+                            File entry = pcBrowseEntries.get(key);
+                            if (entry != null && entry.isDirectory()) browsePcFolder(entry.toPath());
+                            else if (entry != null) openPcBrowserFile(entry);
+                        }
+                    } else {
+                        FsNode selected = selectedNode();
+                        if (selected instanceof FolderNode folder) {
+                            currentFolderId = folder.id;
+                            refreshAll();
+                        } else if (selected instanceof FileNode) previewSelected();
+                    }
+                }
+            }
+        });
+        fileTable.setToolTipText("Double-click to open a file.");
+        JScrollPane tableScroll = new JScrollPane(fileTable);
+        styleScrollPane(tableScroll);
+        JPanel listCard = darkCard(new BorderLayout());
+        listCard.add(tableScroll, BorderLayout.CENTER);
+
+        JPanel previewCard = darkCard(new BorderLayout(8, 10));
+        previewCard.setBorder(new EmptyBorder(18, 18, 18, 18));
+        JLabel previewHeading = new JLabel("PREVIEW");
+        previewHeading.setForeground(new Color(155, 155, 155));
+        previewHeading.setFont(new Font("SansSerif", Font.BOLD, 10));
+        previewCard.add(previewHeading, BorderLayout.NORTH);
+        JPanel previewBody = new JPanel();
+        previewBody.setOpaque(false);
+        previewBody.setLayout(new BoxLayout(previewBody, BoxLayout.Y_AXIS));
+        previewIcon = new JLabel("▧", SwingConstants.CENTER);
+        previewIcon.setForeground(new Color(90, 165, 255));
+        previewIcon.setFont(new Font("SansSerif", Font.PLAIN, 76));
+        previewIcon.setPreferredSize(new Dimension(320, 230));
+        previewIcon.setAlignmentX(Component.CENTER_ALIGNMENT);
+        previewName = new JLabel("Choose a file");
+        previewName.setForeground(new Color(235, 235, 235));
+        previewName.setFont(new Font("SansSerif", Font.BOLD, 15));
+        previewName.setAlignmentX(Component.CENTER_ALIGNMENT);
+        previewMeta = new JLabel("File information will appear here");
+        previewMeta.setForeground(new Color(155, 155, 155));
+        previewMeta.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        previewMeta.setAlignmentX(Component.CENTER_ALIGNMENT);
+        previewHint = new JLabel("Select an item from the list");
+        previewHint.setForeground(new Color(135, 135, 135));
+        previewHint.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        previewHint.setAlignmentX(Component.CENTER_ALIGNMENT);
+        previewOpenButton = createButton("Open file", false);
+        previewOpenButton.setVisible(false);
+        previewOpenButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        previewOpenButton.addActionListener(e -> previewSelected());
+        previewBody.add(Box.createVerticalGlue());
+        previewBody.add(previewIcon);
+        previewBody.add(Box.createVerticalStrut(18));
+        previewBody.add(previewName);
+        previewBody.add(Box.createVerticalStrut(7));
+        previewBody.add(previewMeta);
+        previewBody.add(Box.createVerticalStrut(12));
+        previewBody.add(previewHint);
+        previewBody.add(Box.createVerticalStrut(18));
+        previewBody.add(previewOpenButton);
+        previewBody.add(Box.createVerticalGlue());
+        previewCard.add(previewBody, BorderLayout.CENTER);
+
+        JSplitPane contentSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, listCard, previewCard);
+        contentSplit.setBorder(null);
+        contentSplit.setDividerSize(5);
+        contentSplit.setBackground(new Color(29, 29, 29));
+        contentSplit.setResizeWeight(0.52);
+        contentSplit.setDividerLocation(0.52);
+        panel.add(contentSplit, BorderLayout.CENTER);
+
+        JPanel bottom = new JPanel(new BorderLayout(8, 6));
+        bottom.setOpaque(false);
+        storageLabel = new JLabel();
+        storageLabel.setForeground(new Color(175, 175, 175));
+        storageLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        storageBar = new JProgressBar(0, 100);
+        storageBar.setStringPainted(true);
+        storageBar.setForeground(new Color(65, 145, 235));
+        storageBar.setBorderPainted(false);
+        storageBar.setBackground(new Color(55, 55, 55));
+        bottom.add(storageLabel, BorderLayout.NORTH);
+        bottom.add(storageBar, BorderLayout.CENTER);
+        panel.add(bottom, BorderLayout.SOUTH);
+        return panel;
+    }
+
+    private JButton createButton(String text, boolean primary) {
+        JButton button = new JButton(text);
+        button.setFocusPainted(false);
+        button.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(primary ? new Color(65, 145, 235) : new Color(68, 75, 86)),
+                new EmptyBorder(7, 11, 7, 11)));
+        button.setFont(new Font("SansSerif", Font.BOLD, 11));
+        button.setBackground(primary ? new Color(65, 145, 235) : new Color(49, 54, 63));
+        button.setForeground(primary ? Color.WHITE : new Color(135, 190, 250));
+        button.setOpaque(true);
+        button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        return button;
+    }
+
+    private void styleInput(JTextField field) {
+        field.setBackground(new Color(43, 43, 43));
+        field.setForeground(new Color(235, 235, 235));
+        field.setCaretColor(Color.WHITE);
+        field.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(65, 65, 65)),
+                new EmptyBorder(7, 9, 7, 9)));
+    }
+
+    private JPanel darkCard(LayoutManager layout) {
+        JPanel card = new JPanel(layout);
+        card.setBackground(new Color(43, 43, 43));
+        card.setBorder(BorderFactory.createEmptyBorder());
+        return card;
+    }
+
+    private void applyTheme() {
+        if (frame == null) return;
+        Color background = darkTheme ? new Color(29, 29, 29) : new Color(242, 246, 251);
+        Color panel = darkTheme ? new Color(36, 36, 36) : new Color(255, 255, 255);
+        Color surface = darkTheme ? new Color(43, 43, 43) : new Color(250, 252, 255);
+        Color foreground = darkTheme ? new Color(225, 230, 238) : new Color(35, 48, 65);
+        Color muted = darkTheme ? new Color(155, 165, 178) : new Color(100, 115, 132);
+        Color border = darkTheme ? new Color(55, 62, 72) : new Color(215, 224, 235);
+        applyThemeTo(frame.getContentPane(), background, panel, surface, foreground, muted, border);
+        frame.getContentPane().setBackground(background);
+        if (themeToggleButton != null) {
+            themeToggleButton.setText(darkTheme ? "☀ Light mode" : "☾ Dark mode");
+            themeToggleButton.setBackground(new Color(45, 125, 210));
+            themeToggleButton.setForeground(Color.WHITE);
+        }
+        if (fileTable != null) {
+            fileTable.setBackground(surface);
+            fileTable.setForeground(foreground);
+            fileTable.setSelectionBackground(darkTheme ? new Color(38, 65, 92) : new Color(205, 228, 250));
+            fileTable.setSelectionForeground(darkTheme ? new Color(135, 195, 255) : new Color(30, 95, 165));
+        }
+        if (folderTree != null) {
+            folderTree.setBackground(surface);
+            folderTree.setForeground(foreground);
+        }
+        if (storageBar != null) {
+            storageBar.setBackground(darkTheme ? new Color(55, 55, 55) : new Color(220, 229, 239));
+            storageBar.setForeground(new Color(45, 135, 220));
+        }
+        frame.repaint();
+    }
+
+    private void applyThemeTo(Component component, Color background, Color panel, Color surface,
+            Color foreground, Color muted, Color border) {
+        if (component instanceof JSplitPane split) split.setBackground(background);
+        if (component instanceof JPanel p) {
+            Color old = p.getBackground();
+            if (old != null && old.getRed() < 80 && old.getGreen() < 80 && old.getBlue() < 80) p.setBackground(panel);
+            else p.setBackground(surface);
+        } else if (component instanceof JLabel label) {
+            String text = label.getText() == null ? "" : label.getText();
+            label.setForeground(text.equals("PREVIEW") || text.matches("[A-Z ]{3,}") ? muted : foreground);
+        } else if (component instanceof JButton button) {
+            if (button != themeToggleButton) {
+                button.setBackground(darkTheme ? new Color(49, 54, 63) : new Color(231, 239, 248));
+                button.setForeground(darkTheme ? new Color(150, 195, 245) : new Color(35, 105, 175));
+                button.setBorder(BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(border), new EmptyBorder(7, 11, 7, 11)));
+            }
+        } else if (component instanceof JTextField field) {
+            field.setBackground(surface); field.setForeground(foreground);
+            field.setCaretColor(foreground);
+        } else if (component instanceof JProgressBar bar) {
+            bar.setBackground(darkTheme ? new Color(55, 55, 55) : new Color(220, 229, 239));
+            bar.setForeground(new Color(45, 135, 220));
+        } else if (component instanceof JScrollPane scroll) {
+            scroll.setBackground(surface);
+            scroll.getViewport().setBackground(surface);
+        }
+        if (component instanceof Container container) {
+            for (Component child : container.getComponents())
+                applyThemeTo(child, background, panel, surface, foreground, muted, border);
+        }
+    }
+
+    private void styleScrollPane(JScrollPane scroll) {
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.setBackground(new Color(43, 43, 43));
+        scroll.getViewport().setBackground(new Color(43, 43, 43));
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
+        scroll.getVerticalScrollBar().setBackground(new Color(43, 43, 43));
+        scroll.getVerticalScrollBar().setForeground(new Color(65, 145, 235));
+        scroll.getHorizontalScrollBar().setBackground(new Color(43, 43, 43));
+    }
+
+    private void JTableHeaderStyle(JTable table) {
+        table.getTableHeader().setBackground(new Color(37, 37, 37));
+        table.getTableHeader().setForeground(new Color(165, 165, 165));
+        table.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 10));
+        table.getTableHeader().setPreferredSize(new Dimension(0, 34));
+        table.getTableHeader().setReorderingAllowed(false);
+    }
+
+    private JComponent buildStatus() {
+        statusLabel = new JLabel("Ready");
+        statusLabel.setBorder(new EmptyBorder(7, 14, 7, 14));
+        statusLabel.setOpaque(true);
+        statusLabel.setBackground(new Color(27, 27, 27));
+        statusLabel.setForeground(new Color(155, 155, 155));
+        return statusLabel;
+    }
+
+    private void refreshAll() {
         refreshTree();
         refreshTable();
         refreshStorage();
@@ -46,9 +653,9 @@ public class FileNestApp {
     private void refreshTree() {
         DefaultMutableTreeNode root = new DefaultMutableTreeNode(new FolderRef("root", "Home"));
         addFolderNodes(root, fs.root);
-        gui.treeModel.setRoot(root);
-        gui.treeModel.reload();
-        expandAll(gui.folderTree);
+        treeModel.setRoot(root);
+        treeModel.reload();
+        expandAll(folderTree);
     }
 
     private void addFolderNodes(DefaultMutableTreeNode parent, FolderNode folder) {
@@ -65,7 +672,7 @@ public class FileNestApp {
         for (int i = 0; i < tree.getRowCount(); i++) tree.expandRow(i);
     }
 
-    void refreshTable() {
+    private void refreshTable() {
         // In PC-browse mode, read the directory before clearing the current rows.
         // File.listFiles() can temporarily return null (for example, during a
         // Windows focus/application hand-off). Keep the previous listing visible
@@ -74,27 +681,27 @@ public class FileNestApp {
             File directory = pcBrowsePath.toFile();
             File[] entries = directory.listFiles();
             if (entries == null) {
-                if (gui.pathLabel != null) gui.pathLabel.setText(pcBrowsePath.toString());
+                if (pathLabel != null) pathLabel.setText(pcBrowsePath.toString());
                 status("Could not refresh this PC folder; showing the previous listing. Check folder access and try again.");
                 return;
             }
             Arrays.sort(entries, Comparator.comparing(File::isFile).thenComparing(f -> f.getName().toLowerCase(Locale.ROOT)));
-            gui.tableModel.setRowCount(0);
+            tableModel.setRowCount(0);
             pcBrowseEntries.clear();
-            if (gui.pathLabel != null) gui.pathLabel.setText(pcBrowsePath.toString());
+            if (pathLabel != null) pathLabel.setText(pcBrowsePath.toString());
             for (File entry : entries) {
                 String key = "PCFS:" + entry.getAbsolutePath();
                 pcBrowseEntries.put(key, entry);
                 String type = entry.isDirectory() ? "Folder" : "PC File";
                 String size = entry.isFile() ? formatBytes(entry.length()) : "—";
-                gui.tableModel.addRow(new Object[]{entry.getName(), type, size, "—", "—", key});
+                tableModel.addRow(new Object[]{entry.getName(), type, size, "—", "—", key});
             }
-            if (gui.previewName != null) updatePreviewPanel();
+            if (previewName != null) updatePreviewPanel();
             return;
         }
 
-        gui.tableModel.setRowCount(0);
-        gui.thumbnailCache.keySet().removeIf(key -> {
+        tableModel.setRowCount(0);
+        thumbnailCache.keySet().removeIf(key -> {
             int split = key.lastIndexOf('|');
             if (split < 0) return true;
             String path = key.substring(0, split);
@@ -102,49 +709,49 @@ public class FileNestApp {
         });
         FolderNode folder = fs.folders.get(currentFolderId);
         if (folder == null) { currentFolderId = "root"; folder = fs.root; }
-        if (gui.pathLabel != null) gui.pathLabel.setText("Home  /  " + fs.folderPath(folder).replace("/", "  /  "));
+        if (pathLabel != null) pathLabel.setText("Home  /  " + fs.folderPath(folder).replace("/", "  /  "));
         for (FsNode node : folder.sortedChildren.values()) {
             if (node instanceof FileNode f) {
                 FileRecord r = fs.records.get(f.id);
-                gui.tableModel.addRow(new Object[]{f.name, r.physicalPath == null ? "File" : (r.managedCopy ? "PC Copy" : "PC Link"), formatBytes(r.size), formatTime(r.lastAccess), r.accessCount, f.id});
+                tableModel.addRow(new Object[]{f.name, r.physicalPath == null ? "File" : (r.managedCopy ? "PC Copy" : "PC Link"), formatBytes(r.size), formatTime(r.lastAccess), r.accessCount, f.id});
             } else if (node instanceof FolderNode f) {
-                gui.tableModel.addRow(new Object[]{f.name, "Folder", formatBytes(fs.folderSize(f)), "—", "—", f.id});
+                tableModel.addRow(new Object[]{f.name, "Folder", formatBytes(fs.folderSize(f)), "—", "—", f.id});
             }
         }
-        if (gui.previewName != null) updatePreviewPanel();
+        if (previewName != null) updatePreviewPanel();
     }
 
-    void updatePreviewPanel() {
-        int row = gui.fileTable == null ? -1 : gui.fileTable.getSelectedRow();
+    private void updatePreviewPanel() {
+        int row = fileTable == null ? -1 : fileTable.getSelectedRow();
         if (row >= 0 && pcBrowsePath != null) {
-            String key = String.valueOf(gui.tableModel.getValueAt(gui.fileTable.convertRowIndexToModel(row), 5));
+            String key = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(row), 5));
             File entry = pcBrowseEntries.get(key);
             if (entry == null) return;
-            gui.previewIcon.setIcon(null);
-            gui.previewIcon.setText(entry.isDirectory() ? "📁" : "▤");
+            previewIcon.setIcon(null);
+            previewIcon.setText(entry.isDirectory() ? "📁" : "▤");
             if (entry.isFile()) {
                 ImageIcon thumbnail = getThumbnail(entry, 300, 210);
                 if (thumbnail != null) {
-                    gui.previewIcon.setText("");
-                    gui.previewIcon.setIcon(thumbnail);
+                    previewIcon.setText("");
+                    previewIcon.setIcon(thumbnail);
                 }
             }
-            gui.previewName.setText(entry.getName());
-            gui.previewMeta.setText(entry.isFile() ? formatBytes(entry.length()) + "  •  Original PC file" : "Folder  •  Direct PC access");
-            gui.previewHint.setText(entry.isDirectory() ? "Double-click to browse this folder" : "Opens with your PC's default application");
-            gui.previewOpenButton.setVisible(entry.isFile());
+            previewName.setText(entry.getName());
+            previewMeta.setText(entry.isFile() ? formatBytes(entry.length()) + "  •  Original PC file" : "Folder  •  Direct PC access");
+            previewHint.setText(entry.isDirectory() ? "Double-click to browse this folder" : "Opens with your PC's default application");
+            previewOpenButton.setVisible(entry.isFile());
             return;
         }
         if (row < 0) {
-            gui.previewIcon.setIcon(null);
-            gui.previewIcon.setText("▧");
-            gui.previewName.setText("Choose a file");
-            gui.previewMeta.setText("File information will appear here");
-            gui.previewHint.setText("Select an item from the list");
-            gui.previewOpenButton.setVisible(false);
+            previewIcon.setIcon(null);
+            previewIcon.setText("▧");
+            previewName.setText("Choose a file");
+            previewMeta.setText("File information will appear here");
+            previewHint.setText("Select an item from the list");
+            previewOpenButton.setVisible(false);
             return;
         }
-        String id = String.valueOf(gui.tableModel.getValueAt(gui.fileTable.convertRowIndexToModel(row), 5));
+        String id = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(row), 5));
         if (id.startsWith("PCFS:")) {
             File entry = pcBrowseEntries.get(id);
             if (entry != null && entry.isFile()) openPcBrowserFile(entry);
@@ -153,49 +760,49 @@ public class FileNestApp {
         FsNode node;
         try { node = fs.findNode(id); } catch (RuntimeException ex) { return; }
         if (node instanceof FolderNode folder) {
-            gui.previewIcon.setIcon(null); gui.previewIcon.setText("📁");
-            gui.previewName.setText(folder.name);
-            gui.previewMeta.setText(fs.countFiles(folder) + " files  •  " + formatBytes(fs.folderSize(folder)));
-            gui.previewHint.setText("Folder");
-            gui.previewOpenButton.setVisible(false);
+            previewIcon.setIcon(null); previewIcon.setText("📁");
+            previewName.setText(folder.name);
+            previewMeta.setText(fs.countFiles(folder) + " files  •  " + formatBytes(fs.folderSize(folder)));
+            previewHint.setText("Folder");
+            previewOpenButton.setVisible(false);
             return;
         }
         FileRecord record = fs.records.get(id);
         if (record == null) return;
-        gui.previewName.setText(record.name);
-        gui.previewMeta.setText(formatBytes(record.size) + "  •  " + (record.physicalPath == null ? "FileNest file" : (record.managedCopy ? "PC copy" : "Direct PC access")));
+        previewName.setText(record.name);
+        previewMeta.setText(formatBytes(record.size) + "  •  " + (record.physicalPath == null ? "FileNest file" : (record.managedCopy ? "PC copy" : "Direct PC access")));
         String lower = record.name.toLowerCase(Locale.ROOT);
-        gui.previewIcon.setIcon(null);
+        previewIcon.setIcon(null);
         if (record.physicalPath != null && (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".gif") || lower.endsWith(".bmp"))) {
             try {
                 Image image = ImageIO.read(Path.of(record.physicalPath).toFile());
                 if (image != null) {
                     Image scaled = image.getScaledInstance(300, 210, Image.SCALE_SMOOTH);
-                    gui.previewIcon.setText("");
-                    gui.previewIcon.setIcon(new ImageIcon(scaled));
-                } else gui.previewIcon.setText("▧");
-            } catch (IOException ex) { gui.previewIcon.setText("▧"); }
+                    previewIcon.setText("");
+                    previewIcon.setIcon(new ImageIcon(scaled));
+                } else previewIcon.setText("▧");
+            } catch (IOException ex) { previewIcon.setText("▧"); }
         } else {
-            gui.previewIcon.setText(lower.endsWith(".pdf") ? "PDF" : (lower.matches(".*\\.(mp4|mkv|avi|mov)$") ? "▶" : "▤"));
-            gui.previewIcon.setFont(new Font("SansSerif", Font.BOLD, 62));
-            gui.previewIcon.setForeground(new Color(90, 165, 255));
+            previewIcon.setText(lower.endsWith(".pdf") ? "PDF" : (lower.matches(".*\\.(mp4|mkv|avi|mov)$") ? "▶" : "▤"));
+            previewIcon.setFont(new Font("SansSerif", Font.BOLD, 62));
+            previewIcon.setForeground(new Color(90, 165, 255));
         }
-        gui.previewHint.setText(record.physicalPath == null ? "Simulated content" : "Opens with your PC's default app");
-        gui.previewOpenButton.setVisible(true);
+        previewHint.setText(record.physicalPath == null ? "Simulated content" : "Opens with your PC's default app");
+        previewOpenButton.setVisible(true);
     }
 
     private void refreshStorage() {
         long used = fs.totalSize();
         long capacity = fs.capacityBytes;
         int percent = (int) Math.min(100, Math.round(100.0 * used / capacity));
-        gui.storageLabel.setText("Storage used: " + formatBytes(used) + " / " + formatBytes(capacity)
+        storageLabel.setText("Storage used: " + formatBytes(used) + " / " + formatBytes(capacity)
                 + "     •     Files: " + fs.records.size() + "     •     Folders: " + (fs.folders.size() - 1));
-        gui.storageBar.setValue(percent);
-        gui.storageBar.setString(percent + "% used");
+        storageBar.setValue(percent);
+        storageBar.setString(percent + "% used");
     }
 
-    void createFolder() {
-        String name = JOptionPane.showInputDialog(gui.frame, "Folder name:");
+    private void createFolder() {
+        String name = JOptionPane.showInputDialog(frame, "Folder name:");
         if (name == null || name.isBlank()) return;
         try {
             fs.createFolder(currentFolderId, name.trim());
@@ -204,7 +811,7 @@ public class FileNestApp {
         } catch (RuntimeException ex) { error(ex.getMessage()); }
     }
 
-    void createFile() {
+    private void createFile() {
         JTextField name = new JTextField();
         JTextField size = new JTextField("1024");
         JTextArea content = new JTextArea(4, 24);
@@ -212,7 +819,7 @@ public class FileNestApp {
         form.add(new JLabel("File name:")); form.add(name);
         form.add(new JLabel("Size in bytes:")); form.add(size);
         form.add(new JLabel("Simulated content:")); form.add(new JScrollPane(content));
-        if (JOptionPane.showConfirmDialog(gui.frame, form, "Create File", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+        if (JOptionPane.showConfirmDialog(frame, form, "Create File", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
         try {
             String fileContent = content.getText().isEmpty() ? "Simulated content for " + name.getText().trim() : content.getText();
             fs.createFile(currentFolderId, name.getText().trim(), Long.parseLong(size.getText().trim()), fileContent);
@@ -231,10 +838,10 @@ public class FileNestApp {
         status("Access recorded for " + file.name + " (LRU updated in O(1) average time).");
     }
 
-    void previewSelected() {
-        int selectedRow = gui.fileTable.getSelectedRow();
+    private void previewSelected() {
+        int selectedRow = fileTable.getSelectedRow();
         if (selectedRow >= 0 && pcBrowsePath != null) {
-            String key = String.valueOf(gui.tableModel.getValueAt(gui.fileTable.convertRowIndexToModel(selectedRow), 5));
+            String key = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(selectedRow), 5));
             File entry = pcBrowseEntries.get(key);
             if (entry != null && entry.isFile()) openPcBrowserFile(entry);
             return;
@@ -247,7 +854,7 @@ public class FileNestApp {
                     + "\nFiles inside: " + fs.countFiles(folder)
                     + "\nSubfolders: " + fs.countFolders(folder)
                     + "\nTotal size: " + formatBytes(fs.folderSize(folder));
-            JOptionPane.showMessageDialog(gui.frame, details, "Folder Details", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(frame, details, "Folder Details", JOptionPane.INFORMATION_MESSAGE);
             return;
         }
 
@@ -274,7 +881,7 @@ public class FileNestApp {
         previewPanel.add(details, BorderLayout.NORTH);
         previewPanel.add(new JScrollPane(content), BorderLayout.CENTER);
         previewPanel.setPreferredSize(new Dimension(650, 380));
-        JOptionPane.showMessageDialog(gui.frame, previewPanel, "File Preview", JOptionPane.PLAIN_MESSAGE);
+        JOptionPane.showMessageDialog(frame, previewPanel, "File Preview", JOptionPane.PLAIN_MESSAGE);
         status("Previewing " + record.name + ".");
     }
 
@@ -285,7 +892,7 @@ public class FileNestApp {
     private static final Set<String> SCRIPT_EXTENSIONS = Set.of(
             ".bat", ".cmd", ".ps1", ".vbs", ".js", ".hta", ".wsf", ".sh", ".py");
 
-    void scanSelection() {
+    private void scanSelection() {
         List<String> findings = new ArrayList<>();
         List<Path> cleanableScripts = new ArrayList<>();
         List<FileRecord> simulatedRecords = new ArrayList<>();
@@ -293,19 +900,19 @@ public class FileNestApp {
 
         try {
             if (pcBrowsePath != null) {
-                int row = gui.fileTable.getSelectedRow();
+                int row = fileTable.getSelectedRow();
                 Path target = pcBrowsePath;
                 if (row >= 0) {
-                    String key = String.valueOf(gui.tableModel.getValueAt(gui.fileTable.convertRowIndexToModel(row), 5));
+                    String key = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(row), 5));
                     File entry = pcBrowseEntries.get(key);
                     if (entry != null) target = entry.toPath();
                 }
                 scanPath(target, findings, cleanableScripts, scanned);
             } else {
                 FsNode selected = null;
-                int row = gui.fileTable.getSelectedRow();
+                int row = fileTable.getSelectedRow();
                 if (row >= 0) {
-                    String id = String.valueOf(gui.tableModel.getValueAt(gui.fileTable.convertRowIndexToModel(row), 5));
+                    String id = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(row), 5));
                     try { selected = fs.findNode(id); } catch (RuntimeException ignored) { }
                 }
                 if (selected == null) selected = fs.folders.get(currentFolderId);
@@ -332,12 +939,12 @@ public class FileNestApp {
             report.append("\n\n").append(cleanableScripts.size())
                   .append(" script file(s) contain suspicious command lines.");
             report.append("\nFileNest can create cleaned copies with matching lines removed. Originals will not be changed.");
-            int choice = JOptionPane.showConfirmDialog(gui.frame, report.toString() + "\n\nCreate cleaned copies now?",
+            int choice = JOptionPane.showConfirmDialog(frame, report.toString() + "\n\nCreate cleaned copies now?",
                     "FileNest Security Scan", JOptionPane.YES_NO_OPTION, findings.isEmpty()
                             ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
             if (choice == JOptionPane.YES_OPTION) createCleanedCopies(cleanableScripts);
         } else {
-            JOptionPane.showMessageDialog(gui.frame, report.toString()
+            JOptionPane.showMessageDialog(frame, report.toString()
                     + "\n\nNo files were modified. Files that look risky need review with a trusted antivirus.",
                     "FileNest Security Scan", findings.isEmpty()
                             ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
@@ -468,7 +1075,7 @@ public class FileNestApp {
                 Files.writeString(destination, cleaned, StandardCharsets.UTF_8);
                 created++;
             }
-            JOptionPane.showMessageDialog(gui.frame, created + " cleaned copy/copies created in:\n" + output
+            JOptionPane.showMessageDialog(frame, created + " cleaned copy/copies created in:\n" + output
                     + "\n\nOriginal files were left unchanged. Review each copy before using it; automatic line removal can break scripts.",
                     "Cleaned copies created", JOptionPane.INFORMATION_MESSAGE);
             status(created + " cleaned copy/copies saved to " + output);
@@ -477,16 +1084,16 @@ public class FileNestApp {
         }
     }
 
-    void importFiles() {
+    private void importFiles() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Select files to add to FileNest");
         chooser.setMultiSelectionEnabled(true);
         chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
-        if (chooser.showOpenDialog(gui.frame) != JFileChooser.APPROVE_OPTION) return;
+        if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return;
         File[] selected = chooser.getSelectedFiles();
         if (selected.length == 0 && chooser.getSelectedFile() != null) selected = new File[]{chooser.getSelectedFile()};
         Object[] choices = {"Copy into FileNest", "Keep original location (Direct Access)", "Cancel"};
-        int choice = JOptionPane.showOptionDialog(gui.frame,
+        int choice = JOptionPane.showOptionDialog(frame,
                 "How should FileNest manage these " + selected.length + " file(s)?",
                 "Import mode", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
                 null, choices, choices[0]);
@@ -502,7 +1109,7 @@ public class FileNestApp {
             }
             refreshAll();
             status(added + " real file(s) added to FileNest.");
-            JOptionPane.showMessageDialog(gui.frame, added + " file(s) added successfully. Double-click a file or select it and press Open / Preview.",
+            JOptionPane.showMessageDialog(frame, added + " file(s) added successfully. Double-click a file or select it and press Open / Preview.",
                     "Import complete", JOptionPane.INFORMATION_MESSAGE);
         } catch (IOException | RuntimeException ex) {
             refreshAll();
@@ -532,7 +1139,7 @@ public class FileNestApp {
         }
     }
 
-    void openPcBrowserFile(File file) {
+    private void openPcBrowserFile(File file) {
         try {
             if (!file.exists() || !file.isFile()) { error("This file is no longer available."); return; }
             if (!Desktop.isDesktopSupported() || !Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
@@ -549,23 +1156,23 @@ public class FileNestApp {
     }
 
     private FsNode selectedNode() {
-        int row = gui.fileTable.getSelectedRow();
+        int row = fileTable.getSelectedRow();
         if (row < 0) { error("Select a file or folder first."); return null; }
-        String rowKey = String.valueOf(gui.tableModel.getValueAt(gui.fileTable.convertRowIndexToModel(row), 5));
+        String rowKey = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(row), 5));
         if (rowKey.startsWith("PCFS:")) {
             error("This is a directly browsed PC item. Import it first if you want to manage it inside FileNest.");
             return null;
         }
-        String name = String.valueOf(gui.tableModel.getValueAt(row, 0));
-        String id = String.valueOf(gui.tableModel.getValueAt(row, 5));
+        String name = String.valueOf(tableModel.getValueAt(row, 0));
+        String id = String.valueOf(tableModel.getValueAt(row, 5));
         try { return fs.findNode(id); }
         catch (RuntimeException ex) { error(ex.getMessage()); return null; }
     }
 
-    void renameSelected() {
+    private void renameSelected() {
         FsNode node = selectedNode();
         if (node == null) return;
-        String newName = JOptionPane.showInputDialog(gui.frame, "New name:", node.name);
+        String newName = JOptionPane.showInputDialog(frame, "New name:", node.name);
         if (newName == null || newName.isBlank() || newName.equals(node.name)) return;
         try {
             fs.renameNode(node.id, newName.trim());
@@ -574,13 +1181,13 @@ public class FileNestApp {
         } catch (RuntimeException ex) { error(ex.getMessage()); }
     }
 
-    void moveSelected() {
+    private void moveSelected() {
         FsNode node = selectedNode();
         if (node == null) return;
         List<FolderNode> destinations = new ArrayList<>(fs.folders.values());
         destinations.sort(Comparator.comparing(fs::folderPath));
         String[] labels = destinations.stream().map(f -> fs.folderPath(f) + "  [" + f.id.substring(0, 8) + "]").toArray(String[]::new);
-        int choice = JOptionPane.showOptionDialog(gui.frame, "Choose destination folder:", "Move " + node.name,
+        int choice = JOptionPane.showOptionDialog(frame, "Choose destination folder:", "Move " + node.name,
                 JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE, null, labels, labels[0]);
         if (choice < 0) return;
         try {
@@ -590,12 +1197,12 @@ public class FileNestApp {
         } catch (RuntimeException ex) { error(ex.getMessage()); }
     }
 
-    void deleteSelected() {
+    private void deleteSelected() {
         FsNode node = selectedNode();
         if (node == null) return;
         String kind = node instanceof FolderNode ? "folder and all its contents" : "file";
         String detail = node instanceof FolderNode f ? "\nThis contains " + fs.countFiles(f) + " file(s) and " + fs.countFolders(f) + " subfolder(s)." : "";
-        if (JOptionPane.showConfirmDialog(gui.frame, "Delete " + kind + " '" + node.name + "'?" + detail,
+        if (JOptionPane.showConfirmDialog(frame, "Delete " + kind + " '" + node.name + "'?" + detail,
                 "Confirm deletion", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
         String parentId = node.parent == null ? "root" : node.parent.id;
         fs.deleteNode(node.id);
@@ -604,21 +1211,21 @@ public class FileNestApp {
         status("Deleted successfully. Use Undo to restore the complete operation.");
     }
 
-    void searchFiles() {
-        String query = gui.searchField.getText().trim();
+    private void searchFiles() {
+        String query = searchField.getText().trim();
         if (query.isEmpty()) { refreshTable(); return; }
         List<FileRecord> results = fs.searchPrefix(query);
-        gui.tableModel.setRowCount(0);
+        tableModel.setRowCount(0);
         for (FileRecord r : results) {
-            gui.tableModel.addRow(new Object[]{r.name, r.physicalPath == null ? "File" : (r.managedCopy ? "PC Copy" : "PC Link"), formatBytes(r.size), formatTime(r.lastAccess), r.accessCount, r.id});
+            tableModel.addRow(new Object[]{r.name, r.physicalPath == null ? "File" : (r.managedCopy ? "PC Copy" : "PC Link"), formatBytes(r.size), formatTime(r.lastAccess), r.accessCount, r.id});
         }
         status(results.size() + " result(s) for prefix \"" + query + "\" (Trie search).");
     }
 
-    void showCleanup() {
+    private void showCleanup() {
         List<FileRecord> candidates = fs.suggestUnused(30, 5);
         if (candidates.isEmpty()) {
-            JOptionPane.showMessageDialog(gui.frame, "No unused files found. Access a file or add older demo files.");
+            JOptionPane.showMessageDialog(frame, "No unused files found. Access a file or add older demo files.");
             return;
         }
         StringBuilder msg = new StringBuilder("Suggested cleanup candidates (not deleted automatically):\n\n");
@@ -627,20 +1234,20 @@ public class FileNestApp {
                     .append(" — last accessed ").append(formatTime(r.lastAccess)).append('\n');
         }
         msg.append("\nReview these files before deleting them.");
-        JOptionPane.showMessageDialog(gui.frame, msg.toString(), "Smart Cleanup", JOptionPane.INFORMATION_MESSAGE);
+        JOptionPane.showMessageDialog(frame, msg.toString(), "Smart Cleanup", JOptionPane.INFORMATION_MESSAGE);
     }
 
-    void showHistory() {
+    private void showHistory() {
         List<FileRecord> ordered = fs.lruSnapshot();
         StringBuilder b = new StringBuilder("Least recently used → Most recently used\n\n");
         for (int i=0; i<ordered.size(); i++) b.append(i+1).append(". ").append(ordered.get(i).name)
                 .append(" — ").append(formatTime(ordered.get(i).lastAccess)).append('\n');
         b.append("\nRecent access events:\n");
         for (String event : accessHistory) b.append("• ").append(event).append('\n');
-        JOptionPane.showMessageDialog(gui.frame, b.toString(), "LRU & Access History", JOptionPane.INFORMATION_MESSAGE);
+        JOptionPane.showMessageDialog(frame, b.toString(), "LRU & Access History", JOptionPane.INFORMATION_MESSAGE);
     }
 
-    void showAnalytics() {
+    private void showAnalytics() {
         long used = fs.totalSize();
         long free = Math.max(0, fs.capacityBytes - used);
         int percent = (int) Math.min(100, Math.round(100.0 * used / fs.capacityBytes));
@@ -678,26 +1285,26 @@ public class FileNestApp {
         area.setWrapStyleWord(true);
         area.setCaretPosition(0);
         area.setFont(new Font("SansSerif", Font.PLAIN, 13));
-        JOptionPane.showMessageDialog(gui.frame, new JScrollPane(area), "Quick Storage Analysis",
+        JOptionPane.showMessageDialog(frame, new JScrollPane(area), "Quick Storage Analysis",
                 JOptionPane.INFORMATION_MESSAGE);
     }
 
-    void saveSnapshot() {
+    private void saveSnapshot() {
         JFileChooser chooser = new JFileChooser(); chooser.setSelectedFile(new java.io.File("filenest-save.fns"));
-        if (chooser.showSaveDialog(gui.frame) != JFileChooser.APPROVE_OPTION) return;
+        if (chooser.showSaveDialog(frame) != JFileChooser.APPROVE_OPTION) return;
         try { fs.save(chooser.getSelectedFile()); status("Saved FileNest snapshot."); }
         catch (IOException ex) { error("Could not save: " + ex.getMessage()); }
     }
 
-    void loadSnapshot() {
+    private void loadSnapshot() {
         JFileChooser chooser = new JFileChooser();
-        if (chooser.showOpenDialog(gui.frame) != JFileChooser.APPROVE_OPTION) return;
+        if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return;
         try { fs.load(chooser.getSelectedFile()); currentFolderId="root"; accessHistory.clear(); refreshAll(); status("Loaded FileNest snapshot."); }
         catch (IOException | RuntimeException ex) { error("Could not load: " + ex.getMessage()); }
     }
 
-    void status(String text) { gui.statusLabel.setText(text); }
-    void error(String text) { JOptionPane.showMessageDialog(gui.frame, text, "FileNest", JOptionPane.WARNING_MESSAGE); }
+    private void status(String text) { statusLabel.setText(text); }
+    private void error(String text) { JOptionPane.showMessageDialog(frame, text, "FileNest", JOptionPane.WARNING_MESSAGE); }
     private static String formatBytes(long bytes) {
         if (bytes < 1024) return bytes + " B";
         if (bytes < 1024 * 1024) return String.format(Locale.US, "%.1f KB", bytes / 1024.0);
@@ -709,20 +1316,20 @@ public class FileNestApp {
                 .withZone(ZoneId.systemDefault()).format(time);
     }
 
-    record FolderRef(String id, String name) {
+    private record FolderRef(String id, String name) {
         @Override public String toString() { return name; }
     }
 
     // ---------------------- DSA CORE ----------------------
 
-    abstract static class FsNode {
+    private abstract static class FsNode {
         String id, name;
         FolderNode parent;
         FsNode(String id, String name, FolderNode parent) { this.id=id; this.name=name; this.parent=parent; }
     }
 
     /** N-ary tree node. HashMap-like child index gives average O(1) child lookup. */
-    static class FolderNode extends FsNode {
+    private static class FolderNode extends FsNode {
         // HashMap provides average O(1) name lookup; TreeMap keeps display/traversal sorted.
         final Map<String, FsNode> children = new HashMap<>();
         final NavigableMap<String, FsNode> sortedChildren = new TreeMap<>(
@@ -751,7 +1358,7 @@ public class FileNestApp {
         }
     }
 
-    static class FileNode extends FsNode {
+    private static class FileNode extends FsNode {
         FileNode(String id, String name, FolderNode parent) { super(id, name, parent); }
     }
 
@@ -762,7 +1369,7 @@ public class FileNestApp {
         } catch (NoSuchAlgorithmException ex) { throw new IllegalStateException("SHA-256 is unavailable.", ex); }
     }
 
-    static class FileRecord {
+    private static class FileRecord {
         String id, name, folderId, fingerprint, content;
         String physicalPath;
         boolean managedCopy;
@@ -779,7 +1386,7 @@ public class FileNestApp {
         }
     }
 
-    static class AccessEntry implements Comparable<AccessEntry> {
+    private static class AccessEntry implements Comparable<AccessEntry> {
         String id; Instant time; long version;
         AccessEntry(String id, Instant time, long version) { this.id=id; this.time=time; this.version=version; }
         public int compareTo(AccessEntry other) { return time.compareTo(other.time); }
@@ -789,7 +1396,7 @@ public class FileNestApp {
      * Trie stores lower-case file names. Each terminal node stores matching file IDs.
      * Search cost: O(L + K), excluding result sorting.
      */
-    static class Trie {
+    private static class Trie {
         private static class TrieNode {
             Map<Character, TrieNode> children = new HashMap<>();
             Set<String> ids = new HashSet<>();
@@ -826,7 +1433,7 @@ public class FileNestApp {
         }
     }
 
-    static class FileSystemManager {
+    private static class FileSystemManager {
         final long capacityBytes = 10L * 1024 * 1024 * 1024;
         final FolderNode root = new FolderNode("root", "Home", null);
         final Map<String, FolderNode> folders = new HashMap<>();
@@ -984,7 +1591,7 @@ public class FileNestApp {
             return false;
         }
 
-        FsNode findNode(String id) {
+        private FsNode findNode(String id) {
             if (root.id.equals(id)) return root;
             FolderNode folder = folders.get(id);
             if (folder != null) return folder;
