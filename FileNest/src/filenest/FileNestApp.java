@@ -26,6 +26,12 @@ import java.util.List;
  * Java 17+, Swing GUI, in-memory simulated file system.
  */
 public class FileNestApp {
+    final FileSystemManager fs = new FileSystemManager();
+    final FileNestGUI gui = new FileNestGUI(this);
+    Path pcBrowsePath;
+    final Map<String, File> pcBrowseEntries = new LinkedHashMap<>();
+    String currentFolderId = "root";
+    final Deque<String> accessHistory = new ArrayDeque<>();
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new FileNestApp().start());
     }
