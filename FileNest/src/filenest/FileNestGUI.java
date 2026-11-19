@@ -158,7 +158,7 @@ public class FileNestGUI {
         upper.add(Box.createVerticalStrut(15));
         upper.add(sidebarHeading("FILENEST FOLDERS"));
 
-        DefaultMutableTreeNode root = new DefaultMutableTreeNode(new FolderRef("root", "⌂  Home"));
+        DefaultMutableTreeNode root = new DefaultMutableTreeNode(new FileNestApp.FolderRef("root", "⌂  Home"));
         folderTree = new JTree(root);
         folderTree.setRootVisible(true);
         folderTree.setShowsRootHandles(true);
@@ -182,7 +182,7 @@ public class FileNestGUI {
         });
         folderTree.addTreeSelectionListener(e -> {
             Object node = folderTree.getLastSelectedPathComponent();
-            if (node instanceof DefaultMutableTreeNode dm && dm.getUserObject() instanceof FolderRef ref) {
+            if (node instanceof DefaultMutableTreeNode dm && dm.getUserObject() instanceof FileNestApp.FolderRef ref) {
                 controller.pcBrowsePath = null;
                 controller.currentFolderId = ref.id;
                 controller.refreshTable();
@@ -402,11 +402,11 @@ public class FileNestGUI {
                 JLabel label = (JLabel) super.getTableCellRendererComponent(table, value, selected, focus, row, column);
                 String name = String.valueOf(value);
                 Object idValue = tableModel.getValueAt(table.convertRowIndexToModel(row), 5);
-                FsNode node = null;
+                FileNestApp.FsNode node = null;
                 String rowId = String.valueOf(idValue);
                 try { node = controller.fs.findNode(rowId); } catch (RuntimeException ignored) { }
                 File pcEntry = controller.pcBrowseEntries.get(rowId);
-                boolean folder = pcEntry != null && pcEntry.isDirectory() || node instanceof FolderNode;
+                boolean folder = pcEntry != null && pcEntry.isDirectory() || node instanceof FileNestApp.FolderNode;
                 label.setText((folder ? "   ▰   " : "   ▧   ") + name);
                 label.setFont(new Font("SansSerif", Font.PLAIN, 13));
                 label.setForeground(selected ? new Color(35, 125, 215)
@@ -433,11 +433,11 @@ public class FileNestGUI {
                             else if (entry != null) controller.openPcBrowserFile(entry);
                         }
                     } else {
-                        FsNode selected = selectedNode();
-                        if (selected instanceof FolderNode folder) {
+                        FileNestApp.FsNode selected = selectedNode();
+                        if (selected instanceof FileNestApp.FolderNode folder) {
                             controller.currentFolderId = folder.id;
                             controller.refreshAll();
-                        } else if (selected instanceof FileNode) controller.previewSelected();
+                        } else if (selected instanceof FileNestApp.FileNode) controller.previewSelected();
                     }
                 }
             }
