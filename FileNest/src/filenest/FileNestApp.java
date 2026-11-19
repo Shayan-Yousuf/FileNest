@@ -319,6 +319,50 @@ public class FileNestApp {
         browsePcFolder(Path.of(System.getProperty("user.home"), folderName));
     }
 
+    private void navigateBack() {
+        if (pcBrowsePath != null) {
+            Path parent = pcBrowsePath.getParent();
+            if (parent == null || parent.equals(pcBrowsePath)) {
+                pcBrowsePath = null;
+                currentFolderId = "root";
+                pcBrowseEntries.clear();
+                refreshAll();
+                updatePreviewPanel();
+                status("Returned to FileNest Home.");
+            } else {
+                browsePcFolder(parent);
+            }
+            return;
+        }
+
+        FolderNode current = fs.folders.get(currentFolderId);
+        if (current == null || current.parent == null) {
+            status("You are already at Home.");
+            return;
+        }
+        currentFolderId = current.parent.id;
+        if (folderTree != null) {
+            TreePath parentPath = findTreePath(currentFolderId);
+            if (parentPath != null) folderTree.setSelectionPath(parentPath);
+        }
+        refreshTable();
+        updatePreviewPanel();
+        status("Returned to parent folder.");
+    }
+
+    private TreePath findTreePath(String folderId) {
+        DefaultMutableTreeNode root = (DefaultMutableTreeNode) treeModel.getRoot();
+        Enumeration<?> nodes = root.depthFirstEnumeration();
+        while (nodes.hasMoreElements()) {
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) nodes.nextElement();
+            Object value = node.getUserObject();
+            if (value instanceof FolderRef ref && ref.id.equals(folderId)) {
+                return new TreePath(node.getPath());
+            }
+        }
+        return null;
+    }
+
     private JComponent buildWorkspace() {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
         panel.setBorder(new EmptyBorder(10, 10, 12, 12));
@@ -340,6 +384,11 @@ public class FileNestApp {
 
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         actions.setOpaque(false);
+        JButton backButton = createButton("← Back", false);
+        backButton.setToolTipText("Go to the parent folder");
+        backButton.addActionListener(e -> navigateBack());
+        actions.add(backButton);
+
         JButton[] buttons = {
             createButton("Import", false), createButton("Rename", false),
             createButton("Move", false), createButton("Delete", false),
