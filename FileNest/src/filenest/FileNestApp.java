@@ -53,7 +53,7 @@ public class FileNestApp {
         fs.seedDemoData();
         frame = new JFrame("FileNest | Real + Simulated File Manager");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setMinimumSize(new Dimension(1000, 650));
+        frame.setMinimumSize(new Dimension(1180, 720));
         frame.getContentPane().setBackground(new Color(29, 29, 29));
         frame.setLayout(new BorderLayout());
         frame.add(buildHeader(), BorderLayout.NORTH);
@@ -79,21 +79,27 @@ public class FileNestApp {
 
     private JComponent buildHeader() {
         JPanel header = new JPanel(new BorderLayout(14, 0));
-        header.setBorder(new EmptyBorder(12, 16, 12, 16));
-        header.setBackground(new Color(31, 31, 31));
+        header.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(39, 54, 77)), new EmptyBorder(15, 22, 15, 22)));
+        header.setBackground(new Color(15, 23, 42));
 
-        JLabel brand = new JLabel("▣  FileNest");
-        brand.setForeground(new Color(245, 245, 245));
-        brand.setFont(new Font("SansSerif", Font.BOLD, 21));
-        header.add(brand, BorderLayout.WEST);
+        JPanel brandBlock = new JPanel();
+        brandBlock.setOpaque(false);
+        brandBlock.setLayout(new BoxLayout(brandBlock, BoxLayout.Y_AXIS));
+        JLabel brand = new JLabel("◆  FileNest");
+        brand.setForeground(new Color(235, 243, 255));
+        brand.setFont(new Font("SansSerif", Font.BOLD, 24));
+        JLabel tagline = new JLabel("SMART FILE WORKSPACE");
+        tagline.setForeground(new Color(111, 151, 205));
+        tagline.setFont(new Font("SansSerif", Font.BOLD, 9));
+        brandBlock.add(brand); brandBlock.add(Box.createVerticalStrut(2)); brandBlock.add(tagline);
+        header.add(brandBlock, BorderLayout.WEST);
 
         JPanel address = new JPanel(new BorderLayout(8, 0));
-        address.setBackground(new Color(43, 43, 43));
+        address.setBackground(new Color(24, 36, 56));
         address.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(55, 55, 55)),
-                new EmptyBorder(8, 14, 8, 14)));
+                BorderFactory.createLineBorder(new Color(47, 67, 96)), new EmptyBorder(10, 15, 10, 15)));
         pathLabel = new JLabel("Home  /  All files");
-        pathLabel.setForeground(new Color(205, 205, 205));
+        pathLabel.setForeground(new Color(194, 211, 235));
         pathLabel.setFont(new Font("SansSerif", Font.PLAIN, 13));
         address.add(pathLabel, BorderLayout.CENTER);
         header.add(address, BorderLayout.CENTER);
@@ -138,10 +144,10 @@ public class FileNestApp {
 
     private JComponent buildSidebar() {
         JPanel panel = new JPanel(new BorderLayout(8, 10));
-        panel.setBorder(new EmptyBorder(18, 12, 14, 10));
-        panel.setBackground(new Color(36, 36, 36));
-        panel.setMinimumSize(new Dimension(190, 300));
-        panel.setPreferredSize(new Dimension(218, 600));
+        panel.setBorder(new EmptyBorder(22, 16, 18, 14));
+        panel.setBackground(new Color(17, 27, 45));
+        panel.setMinimumSize(new Dimension(215, 300));
+        panel.setPreferredSize(new Dimension(248, 600));
 
         JPanel upper = new JPanel();
         upper.setOpaque(false);
@@ -220,9 +226,9 @@ public class FileNestApp {
 
     private JLabel sidebarHeading(String text) {
         JLabel label = new JLabel(text);
-        label.setForeground(new Color(145, 145, 145));
+        label.setForeground(new Color(105, 145, 199));
         label.setFont(new Font("SansSerif", Font.BOLD, 10));
-        label.setBorder(new EmptyBorder(9, 8, 6, 4));
+        label.setBorder(new EmptyBorder(12, 10, 7, 4));
         label.setAlignmentX(Component.LEFT_ALIGNMENT);
         return label;
     }
@@ -230,11 +236,11 @@ public class FileNestApp {
     private JButton sidebarButton(String text, Runnable action) {
         JButton button = new JButton(text);
         button.setHorizontalAlignment(SwingConstants.LEFT);
-        button.setForeground(new Color(215, 215, 215));
-        button.setBackground(new Color(37, 37, 37));
-        button.setBorder(new EmptyBorder(8, 9, 8, 5));
+        button.setForeground(new Color(196, 211, 232));
+        button.setBackground(new Color(17, 27, 45));
+        button.setBorder(new EmptyBorder(10, 12, 10, 8));
         button.setFocusPainted(false);
-        button.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        button.setFont(new Font("SansSerif", Font.PLAIN, 13));
         button.setAlignmentX(Component.LEFT_ALIGNMENT);
         button.addActionListener(e -> action.run());
         return button;
@@ -365,35 +371,38 @@ public class FileNestApp {
 
     private JComponent buildWorkspace() {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
-        panel.setBorder(new EmptyBorder(10, 10, 12, 12));
-        panel.setBackground(new Color(29, 29, 29));
+        panel.setBorder(new EmptyBorder(20, 22, 18, 22));
+        panel.setBackground(new Color(11, 18, 32));
 
         JPanel top = new JPanel(new BorderLayout(8, 8));
         top.setOpaque(false);
         JPanel headingRow = new JPanel(new BorderLayout());
         headingRow.setOpaque(false);
-        JLabel heading = new JLabel("Browse files");
-        heading.setForeground(new Color(238, 238, 238));
-        heading.setFont(new Font("SansSerif", Font.BOLD, 18));
+        JLabel heading = new JLabel("Your files");
+        heading.setForeground(new Color(235, 243, 255));
+        heading.setFont(new Font("SansSerif", Font.BOLD, 25));
         headingRow.add(heading, BorderLayout.WEST);
-        JLabel hint = new JLabel("Select a file to see its preview");
-        hint.setForeground(new Color(145, 145, 145));
-        hint.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        JLabel hint = new JLabel("Browse, organize and understand your files");
+        hint.setForeground(new Color(125, 151, 184));
+        hint.setFont(new Font("SansSerif", Font.PLAIN, 12));
         headingRow.add(hint, BorderLayout.EAST);
         top.add(headingRow, BorderLayout.NORTH);
 
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        actions.setOpaque(false);
+        JPanel actionRows = new JPanel(new GridLayout(2, 1, 0, 7));
+        actionRows.setOpaque(false);
+        JPanel fileActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 7, 0));
+        fileActions.setOpaque(false);
+        JPanel smartActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 7, 0));
+        smartActions.setOpaque(false);
         JButton backButton = createButton("← Back", false);
         backButton.setToolTipText("Go to the parent folder");
         backButton.addActionListener(e -> navigateBack());
-        actions.add(backButton);
-
+        fileActions.add(backButton);
         JButton[] buttons = {
-            createButton("Import", false), createButton("Rename", false),
+            createButton("＋ Import", true), createButton("Rename", false),
             createButton("Move", false), createButton("Delete", false),
             createButton("Undo", false), createButton("Cleanup", false),
-            createButton("History", false), createButton("Analyze", false),
+            createButton("History", false), createButton("✦ Analyze", false),
             createButton("Scan", true), createButton("Save", false), createButton("Load", false)
         };
         buttons[0].addActionListener(e -> importFiles());
@@ -407,8 +416,10 @@ public class FileNestApp {
         buttons[8].addActionListener(e -> scanSelection());
         buttons[9].addActionListener(e -> saveSnapshot());
         buttons[10].addActionListener(e -> loadSnapshot());
-        for (JButton button : buttons) actions.add(button);
-        top.add(actions, BorderLayout.CENTER);
+        for (int i = 0; i < 5; i++) fileActions.add(buttons[i]);
+        for (int i = 5; i < buttons.length; i++) smartActions.add(buttons[i]);
+        actionRows.add(fileActions); actionRows.add(smartActions);
+        top.add(actionRows, BorderLayout.CENTER);
         panel.add(top, BorderLayout.NORTH);
 
         String[] columns = {"Name", "Type", "Size", "Last Accessed", "Access Count", "ID"};
@@ -416,7 +427,7 @@ public class FileNestApp {
             @Override public boolean isCellEditable(int row, int col) { return false; }
         };
         fileTable = new JTable(tableModel);
-        fileTable.setRowHeight(43);
+        fileTable.setRowHeight(52);
         fileTable.setFillsViewportHeight(true);
         fileTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
@@ -439,11 +450,11 @@ public class FileNestApp {
         fileTable.setShowGrid(false);
         fileTable.setIntercellSpacing(new Dimension(0, 0));
         fileTable.setAutoResizeMode(JTable.AUTO_RESIZE_LAST_COLUMN);
-        fileTable.setBackground(new Color(43, 43, 43));
-        fileTable.setForeground(new Color(225, 225, 225));
-        fileTable.setSelectionBackground(new Color(65, 65, 65));
+        fileTable.setBackground(new Color(21, 33, 52));
+        fileTable.setForeground(new Color(220, 231, 247));
+        fileTable.setSelectionBackground(new Color(34, 67, 111));
         fileTable.setSelectionForeground(Color.WHITE);
-        fileTable.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        fileTable.setFont(new Font("SansSerif", Font.PLAIN, 13));
         fileTable.setRowSelectionAllowed(true);
         fileTable.setGridColor(new Color(48, 48, 48));
         fileTable.setTableHeader(null);
@@ -522,9 +533,9 @@ public class FileNestApp {
         listCard.add(tableScroll, BorderLayout.CENTER);
 
         JPanel previewCard = darkCard(new BorderLayout(8, 10));
-        previewCard.setBorder(new EmptyBorder(18, 18, 18, 18));
+        previewCard.setBorder(new EmptyBorder(22, 20, 22, 20));
         JLabel previewHeading = new JLabel("PREVIEW");
-        previewHeading.setForeground(new Color(155, 155, 155));
+        previewHeading.setForeground(new Color(111, 151, 205));
         previewHeading.setFont(new Font("SansSerif", Font.BOLD, 10));
         previewCard.add(previewHeading, BorderLayout.NORTH);
         JPanel previewBody = new JPanel();
@@ -536,7 +547,7 @@ public class FileNestApp {
         previewIcon.setPreferredSize(new Dimension(320, 230));
         previewIcon.setAlignmentX(Component.CENTER_ALIGNMENT);
         previewName = new JLabel("Choose a file");
-        previewName.setForeground(new Color(235, 235, 235));
+        previewName.setForeground(new Color(232, 241, 255));
         previewName.setFont(new Font("SansSerif", Font.BOLD, 15));
         previewName.setAlignmentX(Component.CENTER_ALIGNMENT);
         previewMeta = new JLabel("File information will appear here");
@@ -575,7 +586,7 @@ public class FileNestApp {
         JPanel bottom = new JPanel(new BorderLayout(8, 6));
         bottom.setOpaque(false);
         storageLabel = new JLabel();
-        storageLabel.setForeground(new Color(175, 175, 175));
+        storageLabel.setForeground(new Color(155, 180, 211));
         storageLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
         storageBar = new JProgressBar(0, 100);
         storageBar.setStringPainted(true);
@@ -592,19 +603,19 @@ public class FileNestApp {
         JButton button = new JButton(text);
         button.setFocusPainted(false);
         button.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(primary ? new Color(65, 145, 235) : new Color(68, 75, 86)),
-                new EmptyBorder(7, 11, 7, 11)));
-        button.setFont(new Font("SansSerif", Font.BOLD, 11));
-        button.setBackground(primary ? new Color(65, 145, 235) : new Color(49, 54, 63));
-        button.setForeground(primary ? Color.WHITE : new Color(135, 190, 250));
+                BorderFactory.createLineBorder(primary ? new Color(72, 139, 255) : new Color(48, 67, 96)),
+                new EmptyBorder(9, 14, 9, 14)));
+        button.setFont(new Font("SansSerif", Font.BOLD, 12));
+        button.setBackground(primary ? new Color(55, 119, 230) : new Color(25, 41, 65));
+        button.setForeground(primary ? Color.WHITE : new Color(185, 211, 246));
         button.setOpaque(true);
         button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         return button;
     }
 
     private void styleInput(JTextField field) {
-        field.setBackground(new Color(43, 43, 43));
-        field.setForeground(new Color(235, 235, 235));
+        field.setBackground(new Color(24, 36, 56));
+        field.setForeground(new Color(232, 241, 255));
         field.setCaretColor(Color.WHITE);
         field.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(65, 65, 65)),
@@ -613,24 +624,24 @@ public class FileNestApp {
 
     private JPanel darkCard(LayoutManager layout) {
         JPanel card = new JPanel(layout);
-        card.setBackground(new Color(43, 43, 43));
-        card.setBorder(BorderFactory.createEmptyBorder());
+        card.setBackground(new Color(19, 31, 50));
+        card.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(37, 55, 82)), BorderFactory.createEmptyBorder(1, 1, 1, 1)));
         return card;
     }
 
     private void applyTheme() {
         if (frame == null) return;
-        Color background = darkTheme ? new Color(29, 29, 29) : new Color(242, 246, 251);
-        Color panel = darkTheme ? new Color(36, 36, 36) : new Color(255, 255, 255);
-        Color surface = darkTheme ? new Color(43, 43, 43) : new Color(250, 252, 255);
-        Color foreground = darkTheme ? new Color(225, 230, 238) : new Color(35, 48, 65);
-        Color muted = darkTheme ? new Color(155, 165, 178) : new Color(100, 115, 132);
-        Color border = darkTheme ? new Color(55, 62, 72) : new Color(215, 224, 235);
+        Color background = darkTheme ? new Color(11, 18, 32) : new Color(239, 245, 253);
+        Color panel = darkTheme ? new Color(17, 27, 45) : new Color(255, 255, 255);
+        Color surface = darkTheme ? new Color(19, 31, 50) : new Color(248, 251, 255);
+        Color foreground = darkTheme ? new Color(225, 236, 250) : new Color(35, 48, 65);
+        Color muted = darkTheme ? new Color(137, 160, 190) : new Color(100, 115, 132);
+        Color border = darkTheme ? new Color(42, 61, 89) : new Color(211, 224, 241);
         applyThemeTo(frame.getContentPane(), background, panel, surface, foreground, muted, border);
         frame.getContentPane().setBackground(background);
         if (themeToggleButton != null) {
             themeToggleButton.setText(darkTheme ? "☀ Light mode" : "☾ Dark mode");
-            themeToggleButton.setBackground(new Color(45, 125, 210));
+            themeToggleButton.setBackground(new Color(55, 119, 230));
             themeToggleButton.setForeground(Color.WHITE);
         }
         if (fileTable != null) {
@@ -645,7 +656,7 @@ public class FileNestApp {
         }
         if (storageBar != null) {
             storageBar.setBackground(darkTheme ? new Color(55, 55, 55) : new Color(220, 229, 239));
-            storageBar.setForeground(new Color(45, 135, 220));
+            storageBar.setForeground(new Color(64, 143, 255));
         }
         frame.repaint();
     }
@@ -662,8 +673,8 @@ public class FileNestApp {
             label.setForeground(text.equals("PREVIEW") || text.matches("[A-Z ]{3,}") ? muted : foreground);
         } else if (component instanceof JButton button) {
             if (button != themeToggleButton) {
-                button.setBackground(darkTheme ? new Color(49, 54, 63) : new Color(231, 239, 248));
-                button.setForeground(darkTheme ? new Color(150, 195, 245) : new Color(35, 105, 175));
+                button.setBackground(darkTheme ? new Color(25, 41, 65) : new Color(231, 240, 252));
+                button.setForeground(darkTheme ? new Color(185, 211, 246) : new Color(35, 105, 175));
                 button.setBorder(BorderFactory.createCompoundBorder(
                         BorderFactory.createLineBorder(border), new EmptyBorder(7, 11, 7, 11)));
             }
@@ -705,8 +716,8 @@ public class FileNestApp {
         statusLabel = new JLabel("Ready");
         statusLabel.setBorder(new EmptyBorder(7, 14, 7, 14));
         statusLabel.setOpaque(true);
-        statusLabel.setBackground(new Color(27, 27, 27));
-        statusLabel.setForeground(new Color(155, 155, 155));
+        statusLabel.setBackground(new Color(13, 22, 38));
+        statusLabel.setForeground(new Color(145, 174, 211));
         return statusLabel;
     }
 
