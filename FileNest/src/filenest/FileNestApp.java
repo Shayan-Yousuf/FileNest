@@ -51,7 +51,7 @@ public class FileNestApp {
 
     private void show() {
         fs.seedDemoData();
-        frame = new JFrame("FileNest | Real + Simulated File Manager");
+        frame = new JFrame("FileNest | Simulated File Manager");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setMinimumSize(new Dimension(1180, 720));
         frame.getContentPane().setBackground(new Color(29, 29, 29));
