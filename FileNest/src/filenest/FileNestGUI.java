@@ -43,7 +43,6 @@ public class FileNestGUI {
     FileNestGUI(FileNestApp controller) { this.controller = controller; }
 
     void show() {
-        controller.fs.seedDemoData();
         frame = new JFrame("FileNest | Real + Simulated File Manager");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setMinimumSize(new Dimension(1000, 650));
