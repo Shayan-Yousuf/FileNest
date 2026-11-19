@@ -388,16 +388,13 @@ public class FileNestApp {
         headingRow.add(hint, BorderLayout.EAST);
         top.add(headingRow, BorderLayout.NORTH);
 
-        JPanel actionRows = new JPanel(new GridLayout(2, 1, 0, 7));
-        actionRows.setOpaque(false);
-        JPanel fileActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 7, 0));
-        fileActions.setOpaque(false);
-        JPanel smartActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 7, 0));
-        smartActions.setOpaque(false);
+        // Keep every workspace action on one compact horizontal toolbar row.
+        JPanel actionBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        actionBar.setOpaque(false);
         JButton backButton = createButton("← Back", false);
         backButton.setToolTipText("Go to the parent folder");
         backButton.addActionListener(e -> navigateBack());
-        fileActions.add(backButton);
+        actionBar.add(backButton);
         JButton[] buttons = {
             createButton("＋ Import", true), createButton("Rename", false),
             createButton("Move", false), createButton("Delete", false),
@@ -416,10 +413,19 @@ public class FileNestApp {
         buttons[8].addActionListener(e -> scanSelection());
         buttons[9].addActionListener(e -> saveSnapshot());
         buttons[10].addActionListener(e -> loadSnapshot());
-        for (int i = 0; i < 5; i++) fileActions.add(buttons[i]);
-        for (int i = 5; i < buttons.length; i++) smartActions.add(buttons[i]);
-        actionRows.add(fileActions); actionRows.add(smartActions);
-        top.add(actionRows, BorderLayout.CENTER);
+        for (JButton button : buttons) {
+            button.setFont(new Font("SansSerif", Font.BOLD, 11));
+            button.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(button == buttons[0] || button == buttons[8]
+                            ? new Color(72, 139, 255) : new Color(48, 67, 96)),
+                    new EmptyBorder(6, 8, 6, 8)));
+            actionBar.add(button);
+        }
+        backButton.setFont(new Font("SansSerif", Font.BOLD, 11));
+        backButton.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(48, 67, 96)),
+                new EmptyBorder(6, 8, 6, 8)));
+        top.add(actionBar, BorderLayout.CENTER);
         panel.add(top, BorderLayout.NORTH);
 
         String[] columns = {"Name", "Type", "Size", "Last Accessed", "Access Count", "ID"};
