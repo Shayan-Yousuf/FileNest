@@ -184,7 +184,7 @@ public class FileNestGUI {
             Object node = folderTree.getLastSelectedPathComponent();
             if (node instanceof DefaultMutableTreeNode dm && dm.getUserObject() instanceof FileNestApp.FolderRef ref) {
                 controller.pcBrowsePath = null;
-                controller.currentFolderId = ref.id;
+                controller.currentFolderId = ref.id();
                 controller.refreshTable();
             }
         });
