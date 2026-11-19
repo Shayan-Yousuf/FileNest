@@ -1331,58 +1331,83 @@ public class FileNestApp {
     }
 
     private void showAnalytics() {
-        long used = fs.totalSize();
-        long free = Math.max(0, fs.capacityBytes - used);
-        int percent = (int) Math.min(100, Math.round(100.0 * used / fs.capacityBytes));
+        // Analyze only the selected item. If nothing is selected, analyze the folder currently open.
+        FsNode target = null;
+        int selectedRow = fileTable == null ? -1 : fileTable.getSelectedRow();
+        if (selectedRow >= 0 && pcBrowsePath == null) {
+            String id = String.valueOf(tableModel.getValueAt(fileTable.convertRowIndexToModel(selectedRow), 5));
+            try { target = fs.findNode(id); } catch (RuntimeException ignored) { }
+        }
+        if (target == null) target = fs.folders.get(currentFolderId);
+        if (target == null) target = fs.root;
 
-        List<FileRecord> allFiles = new ArrayList<>(fs.records.values());
-        List<FileRecord> largest = new ArrayList<>(allFiles);
+        List<FileRecord> scopedFiles = new ArrayList<>();
+        List<FolderNode> scopedFolders = new ArrayList<>();
+        if (target instanceof FileNode) {
+            FileRecord record = fs.records.get(target.id);
+            if (record != null) scopedFiles.add(record);
+        } else if (target instanceof FolderNode folder) {
+            collectAnalysisContents(folder, scopedFiles, scopedFolders);
+        }
+
+        long used = scopedFiles.stream().mapToLong(r -> r.size).sum();
+        int percent = (int) Math.min(100, Math.round(100.0 * used / fs.capacityBytes));
+        List<FileRecord> largest = new ArrayList<>(scopedFiles);
         largest.sort(Comparator.comparingLong((FileRecord r) -> r.size).reversed());
-        List<FileRecord> duplicates = fs.findDuplicates();
-        List<FileRecord> oldFiles = new ArrayList<>();
         Instant oldCutoff = Instant.now().minus(Duration.ofDays(30));
-        for (FileRecord record : allFiles) {
+        List<FileRecord> oldFiles = new ArrayList<>();
+        for (FileRecord record : scopedFiles) {
             if (!record.lastAccess.isAfter(oldCutoff)) oldFiles.add(record);
         }
         oldFiles.sort(Comparator.comparing(r -> r.lastAccess));
 
+        Map<String, List<FileRecord>> duplicateGroups = new LinkedHashMap<>();
+        for (FileRecord record : scopedFiles)
+            duplicateGroups.computeIfAbsent(record.fingerprint, key -> new ArrayList<>()).add(record);
+        int duplicateEntries = 0;
+        for (List<FileRecord> group : duplicateGroups.values())
+            if (group.size() > 1) duplicateEntries += group.size();
+
         List<FolderNode> emptyFolders = new ArrayList<>();
-        collectEmptyFolders(fs.root, emptyFolders);
+        for (FolderNode folder : scopedFolders)
+            if (folder != target && folder.children.isEmpty()) emptyFolders.add(folder);
 
         List<String> securityFindings = new ArrayList<>();
         int[] scanned = {0};
         try {
-            scanFileSystemNode(fs.root, securityFindings, new ArrayList<>(), new ArrayList<>(), scanned);
+            scanFileSystemNode(target, securityFindings, new ArrayList<>(), new ArrayList<>(), scanned);
         } catch (RuntimeException ex) {
-            securityFindings.add("Some items could not be scanned: " + ex.getMessage());
+            securityFindings.add("Some items could not be checked: " + ex.getMessage());
         }
 
+        String locationName = target.name;
+        String locationPath = target instanceof FolderNode folder ? fs.folderPath(folder) : fs.folderPath(target.parent) + "/" + target.name;
         StringBuilder html = new StringBuilder("<html><body style='font-family:Segoe UI,Arial; color:#26364a;'>");
-        html.append("<h1 style='color:#1769c2;'>FileNest Health Report</h1>");
-        html.append("<p style='color:#62758b;'>A simple overview of your FileNest files. This report only checks files; it does not change or delete anything.</p>");
+        html.append("<h1 style='color:#1769c2;'>Folder Health Report</h1>");
+        html.append("<p style='color:#62758b;'>Analysis for <b>").append(escapeHtml(locationName))
+                .append("</b><br>").append(escapeHtml(locationPath))
+                .append("<br>Only this selected item and its contents were checked.</p>");
 
-        html.append("<h2>1. Storage space</h2><table cellpadding='8' cellspacing='0' style='background:#eef5fc;width:100%;'>");
-        html.append("<tr><td><b>").append(percent).append("% used</b><br>")
-                .append(escapeHtml(formatBytes(used))).append(" used out of ")
-                .append(escapeHtml(formatBytes(fs.capacityBytes))).append("</td><td><b>")
-                .append(escapeHtml(formatBytes(free))).append("</b><br>Space remaining</td></tr></table>");
-        html.append("<p>").append(allFiles.size()).append(" files &nbsp; | &nbsp; ")
-                .append(Math.max(0, fs.folders.size() - 1)).append(" folders</p>");
+        html.append("<h2>At a glance</h2><table cellpadding='8' cellspacing='0' style='background:#eef5fc;width:100%;'>");
+        html.append("<tr><td><b>").append(scopedFiles.size()).append("</b><br>Files</td><td><b>")
+                .append(Math.max(0, scopedFolders.size() - (target instanceof FolderNode ? 1 : 0)))
+                .append("</b><br>Subfolders</td><td><b>").append(escapeHtml(formatBytes(used)))
+                .append("</b><br>Space used</td></tr></table>");
+        html.append("<p><b>").append(percent).append("%</b> of FileNest's 10 GB capacity, based on this location's files.</p>");
 
-        html.append("<h2>2. Things worth reviewing</h2><ul>");
-        html.append("<li><b>Duplicate files:</b> ").append(duplicates.size())
-                .append(" entries with matching content. You may have extra copies.</li>");
+        html.append("<h2>What may need attention?</h2><ul>");
         long largeCount = largest.stream().filter(r -> r.size >= 100L * 1024 * 1024).count();
+        html.append("<li><b>Possible duplicates:</b> ").append(duplicateEntries)
+                .append(" file entries share matching content within this location.</li>");
         html.append("<li><b>Large files:</b> ").append(largeCount)
-                .append(" files are 100 MB or larger and may use a lot of space.</li>");
+                .append(" files are 100 MB or larger.</li>");
         html.append("<li><b>Not opened recently:</b> ").append(oldFiles.size())
-                .append(" files have not been accessed for 30 days or more.</li>");
-        html.append("<li><b>Empty folders:</b> ").append(emptyFolders.size())
-                .append(" folders currently contain no items.</li>");
+                .append(" files have no recorded access in the last 30 days.</li>");
+        html.append("<li><b>Empty subfolders:</b> ").append(emptyFolders.size()).append(".</li>");
         html.append("</ul>");
 
-        html.append("<h3>Largest files</h3>");
-        if (largest.isEmpty()) html.append("<p>No files have been added yet.</p>");
+        html.append("<h3>Largest files here</h3>");
+        if (largest.isEmpty()) html.append("<p>This location has no files yet.</p>");
         else {
             html.append("<ul>");
             for (int i = 0; i < Math.min(5, largest.size()); i++) {
@@ -1393,60 +1418,55 @@ public class FileNestApp {
             html.append("</ul>");
         }
 
-        html.append("<h3>Files not opened in 30+ days</h3>");
-        if (oldFiles.isEmpty()) html.append("<p>Great! No files match this check.</p>");
+        html.append("<h3>Files to review</h3>");
+        if (oldFiles.isEmpty()) html.append("<p>No files in this location meet the 30-day check.</p>");
         else {
             html.append("<ul>");
             for (int i = 0; i < Math.min(5, oldFiles.size()); i++) {
                 FileRecord file = oldFiles.get(i);
-                html.append("<li>").append(escapeHtml(file.name)).append(" — last opened ")
+                html.append("<li>").append(escapeHtml(file.name)).append(" — last recorded access ")
                         .append(escapeHtml(formatTime(file.lastAccess))).append("</li>");
             }
             html.append("</ul>");
         }
 
-        html.append("<h2>3. Basic safety check</h2><p>Files checked: <b>").append(scanned[0])
+        html.append("<h2>Basic safety check</h2><p>Files checked: <b>").append(scanned[0])
                 .append("</b> &nbsp; | &nbsp; Warnings: <b>").append(securityFindings.size()).append("</b></p>");
         if (securityFindings.isEmpty()) {
-            html.append("<p style='color:#18794e;'>No suspicious patterns were found by FileNest's basic check.</p>");
+            html.append("<p style='color:#18794e;'>No suspicious patterns were found by FileNest's basic check in this location.</p>");
         } else {
             html.append("<p style='color:#a15c00;'>Please review these items before opening them:</p><ul>");
             for (int i = 0; i < Math.min(5, securityFindings.size()); i++)
                 html.append("<li>").append(escapeHtml(securityFindings.get(i))).append("</li>");
             html.append("</ul>");
         }
-        html.append("<p style='color:#68798c;font-size:small;'>Important: this is a basic warning system, not a full antivirus. A clean result does not guarantee a file is safe.</p>");
+        html.append("<p style='color:#68798c;font-size:small;'>This is a basic warning system, not a full antivirus. A clean result does not guarantee a file is safe.</p>");
 
-        html.append("<h2>4. What should I do?</h2><ul>");
+        html.append("<h2>Suggested next steps</h2><ul>");
         boolean adviceAdded = false;
         if (percent >= 80) {
-            html.append("<li>Storage is getting full. Review the largest files before adding more.</li>");
+            html.append("<li>This location uses a large share of FileNest's capacity. Review the largest files before adding more.</li>");
             adviceAdded = true;
         }
-        if (!duplicates.isEmpty()) {
-            html.append("<li>Check duplicate files and keep the copies you actually need.</li>");
+        if (duplicateEntries > 0) {
+            html.append("<li>Compare the possible duplicate files and keep the copies you need.</li>");
             adviceAdded = true;
         }
         if (!oldFiles.isEmpty()) {
-            html.append("<li>Review older files. Archive or delete only the ones you no longer need.</li>");
+            html.append("<li>Review older files. Archive or delete only files you no longer need.</li>");
             adviceAdded = true;
         }
         if (!emptyFolders.isEmpty()) {
-            html.append("<li>Remove empty folders only if you no longer need them.</li>");
+            html.append("<li>Check empty subfolders and remove only those you no longer need.</li>");
             adviceAdded = true;
         }
         if (!securityFindings.isEmpty()) {
-            html.append("<li>Review safety warnings before opening unfamiliar files.</li>");
+            html.append("<li>Review the safety warnings before opening unfamiliar files.</li>");
             adviceAdded = true;
         }
-        if (!adviceAdded) html.append("<li>No major issues were found in these checks. Your workspace looks good!</li>");
+        if (!adviceAdded) html.append("<li>No major issues were found in the checks for this location.</li>");
         html.append("</ul>");
-
-        html.append("<h2>5. Recovery information</h2><p>")
-                .append(fs.detachedRecords.size())
-                .append(" deleted entries are temporarily available through Undo in this session. ")
-                .append("This is not a permanent Recycle Bin.</p>");
-        html.append("<p style='color:#68798c;font-size:small;'>FileNest did not delete, move, quarantine, or modify any files during this report.</p>");
+        html.append("<p style='color:#68798c;font-size:small;'>This report only reads information. It does not delete, move, quarantine, or modify files.</p>");
         html.append("</body></html>");
 
         JEditorPane report = new JEditorPane("text/html", html.toString());
@@ -1456,8 +1476,21 @@ public class FileNestApp {
         report.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
         JScrollPane scroll = new JScrollPane(report);
         scroll.setPreferredSize(new Dimension(700, 620));
-        JOptionPane.showMessageDialog(frame, scroll, "FileNest Health Report",
+        JOptionPane.showMessageDialog(frame, scroll, "Analysis: " + locationName,
                 JOptionPane.INFORMATION_MESSAGE);
+        status("Analysis completed for " + locationName + " (" + scopedFiles.size() + " file(s)).");
+    }
+
+    private void collectAnalysisContents(FolderNode folder, List<FileRecord> files, List<FolderNode> folders) {
+        folders.add(folder);
+        for (FsNode child : folder.sortedChildren.values()) {
+            if (child instanceof FileNode) {
+                FileRecord record = fs.records.get(child.id);
+                if (record != null) files.add(record);
+            } else if (child instanceof FolderNode childFolder) {
+                collectAnalysisContents(childFolder, files, folders);
+            }
+        }
     }
 
     private String escapeHtml(String value) {
