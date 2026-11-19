@@ -1357,83 +1357,114 @@ public class FileNestApp {
             securityFindings.add("Some items could not be scanned: " + ex.getMessage());
         }
 
-        StringBuilder report = new StringBuilder();
-        report.append("FILENEST HEALTH REPORT\\n");
-        report.append("======================\\n\\n");
-        report.append("STORAGE\\n");
-        report.append("Used: ").append(formatBytes(used)).append(" / ").append(formatBytes(fs.capacityBytes))
-                .append(" (").append(percent).append("%)\\n");
-        report.append("Available: ").append(formatBytes(free)).append("\\n");
-        report.append("Files: ").append(allFiles.size()).append("    Folders: ")
-                .append(Math.max(0, fs.folders.size() - 1)).append("\\n\\n");
+        StringBuilder html = new StringBuilder("<html><body style='font-family:Segoe UI,Arial; color:#26364a;'>");
+        html.append("<h1 style='color:#1769c2;'>FileNest Health Report</h1>");
+        html.append("<p style='color:#62758b;'>A simple overview of your FileNest files. This report only checks files; it does not change or delete anything.</p>");
 
-        report.append("SMART ANALYSIS\\n");
-        report.append("Exact duplicate entries: ").append(duplicates.size()).append("\\n");
-        report.append("Large files (100 MB or more): ")
-                .append(largest.stream().filter(r -> r.size >= 100L * 1024 * 1024).count()).append("\\n");
-        report.append("Not accessed in 30+ days: ").append(oldFiles.size()).append("\\n");
-        report.append("Empty folders: ").append(emptyFolders.size()).append("\\n");
-        report.append("Files in LRU history: ").append(fs.lru.size()).append("\\n\\n");
+        html.append("<h2>1. Storage space</h2><table cellpadding='8' cellspacing='0' style='background:#eef5fc;width:100%;'>");
+        html.append("<tr><td><b>").append(percent).append("% used</b><br>")
+                .append(escapeHtml(formatBytes(used))).append(" used out of ")
+                .append(escapeHtml(formatBytes(fs.capacityBytes))).append("</td><td><b>")
+                .append(escapeHtml(formatBytes(free))).append("</b><br>Space remaining</td></tr></table>");
+        html.append("<p>").append(allFiles.size()).append(" files &nbsp; | &nbsp; ")
+                .append(Math.max(0, fs.folders.size() - 1)).append(" folders</p>");
 
-        report.append("LARGEST FILES\\n");
-        if (largest.isEmpty()) report.append("• No files indexed yet.\\n");
-        else for (int i = 0; i < Math.min(5, largest.size()); i++) {
-            FileRecord r = largest.get(i);
-            report.append("• ").append(r.name).append(" — ").append(formatBytes(r.size)).append("\\n");
+        html.append("<h2>2. Things worth reviewing</h2><ul>");
+        html.append("<li><b>Duplicate files:</b> ").append(duplicates.size())
+                .append(" entries with matching content. You may have extra copies.</li>");
+        long largeCount = largest.stream().filter(r -> r.size >= 100L * 1024 * 1024).count();
+        html.append("<li><b>Large files:</b> ").append(largeCount)
+                .append(" files are 100 MB or larger and may use a lot of space.</li>");
+        html.append("<li><b>Not opened recently:</b> ").append(oldFiles.size())
+                .append(" files have not been accessed for 30 days or more.</li>");
+        html.append("<li><b>Empty folders:</b> ").append(emptyFolders.size())
+                .append(" folders currently contain no items.</li>");
+        html.append("</ul>");
+
+        html.append("<h3>Largest files</h3>");
+        if (largest.isEmpty()) html.append("<p>No files have been added yet.</p>");
+        else {
+            html.append("<ul>");
+            for (int i = 0; i < Math.min(5, largest.size()); i++) {
+                FileRecord file = largest.get(i);
+                html.append("<li>").append(escapeHtml(file.name)).append(" — ")
+                        .append(escapeHtml(formatBytes(file.size))).append("</li>");
+            }
+            html.append("</ul>");
         }
 
-        report.append("\\nOLD / RARELY ACCESSED FILES\\n");
-        if (oldFiles.isEmpty()) report.append("• No files are older than the 30-day access threshold.\\n");
-        else for (int i = 0; i < Math.min(5, oldFiles.size()); i++) {
-            FileRecord r = oldFiles.get(i);
-            report.append("• ").append(r.name).append(" — last accessed ").append(formatTime(r.lastAccess))
-                    .append(", opened ").append(r.accessCount).append(" time(s)\\n");
+        html.append("<h3>Files not opened in 30+ days</h3>");
+        if (oldFiles.isEmpty()) html.append("<p>Great! No files match this check.</p>");
+        else {
+            html.append("<ul>");
+            for (int i = 0; i < Math.min(5, oldFiles.size()); i++) {
+                FileRecord file = oldFiles.get(i);
+                html.append("<li>").append(escapeHtml(file.name)).append(" — last opened ")
+                        .append(escapeHtml(formatTime(file.lastAccess))).append("</li>");
+            }
+            html.append("</ul>");
         }
 
-        report.append("\\nEMPTY FOLDERS\\n");
-        if (emptyFolders.isEmpty()) report.append("• No empty folders found.\\n");
-        else for (int i = 0; i < Math.min(8, emptyFolders.size()); i++)
-            report.append("• ").append(fs.folderPath(emptyFolders.get(i))).append("\\n");
-
-        report.append("\\nDUPLICATES\\n");
-        if (duplicates.isEmpty()) report.append("• No exact duplicates found in indexed FileNest files.\\n");
-        else for (int i = 0; i < Math.min(8, duplicates.size()); i++) {
-            FileRecord r = duplicates.get(i);
-            report.append("• ").append(r.name).append(" — ").append(formatBytes(r.size)).append("\\n");
+        html.append("<h2>3. Basic safety check</h2><p>Files checked: <b>").append(scanned[0])
+                .append("</b> &nbsp; | &nbsp; Warnings: <b>").append(securityFindings.size()).append("</b></p>");
+        if (securityFindings.isEmpty()) {
+            html.append("<p style='color:#18794e;'>No suspicious patterns were found by FileNest's basic check.</p>");
+        } else {
+            html.append("<p style='color:#a15c00;'>Please review these items before opening them:</p><ul>");
+            for (int i = 0; i < Math.min(5, securityFindings.size()); i++)
+                html.append("<li>").append(escapeHtml(securityFindings.get(i))).append("</li>");
+            html.append("</ul>");
         }
+        html.append("<p style='color:#68798c;font-size:small;'>Important: this is a basic warning system, not a full antivirus. A clean result does not guarantee a file is safe.</p>");
 
-        report.append("\\nSECURITY REVIEW\\n");
-        report.append("Files checked: ").append(scanned[0]).append("\\n");
-        report.append("Potential warnings: ").append(securityFindings.size()).append("\\n");
-        if (securityFindings.isEmpty()) report.append("• No suspicious patterns detected by the basic heuristic scanner.\\n");
-        else for (int i = 0; i < Math.min(8, securityFindings.size()); i++)
-            report.append("• ").append(securityFindings.get(i)).append("\\n");
-        report.append("Note: warnings are heuristic indicators, not proof that a file is malicious.\\n");
+        html.append("<h2>4. What should I do?</h2><ul>");
+        boolean adviceAdded = false;
+        if (percent >= 80) {
+            html.append("<li>Storage is getting full. Review the largest files before adding more.</li>");
+            adviceAdded = true;
+        }
+        if (!duplicates.isEmpty()) {
+            html.append("<li>Check duplicate files and keep the copies you actually need.</li>");
+            adviceAdded = true;
+        }
+        if (!oldFiles.isEmpty()) {
+            html.append("<li>Review older files. Archive or delete only the ones you no longer need.</li>");
+            adviceAdded = true;
+        }
+        if (!emptyFolders.isEmpty()) {
+            html.append("<li>Remove empty folders only if you no longer need them.</li>");
+            adviceAdded = true;
+        }
+        if (!securityFindings.isEmpty()) {
+            html.append("<li>Review safety warnings before opening unfamiliar files.</li>");
+            adviceAdded = true;
+        }
+        if (!adviceAdded) html.append("<li>No major issues were found in these checks. Your workspace looks good!</li>");
+        html.append("</ul>");
 
-        report.append("\\nRECOVERY STATUS\\n");
-        report.append("Temporarily recoverable deleted entries (current session Undo): ")
-                .append(fs.detachedRecords.size()).append("\\n");
-        report.append("A dedicated persistent Recycle Bin and quarantine/backup workflow are planned next; ")
-                .append("this count is not a permanent recycle-bin guarantee.\\n");
+        html.append("<h2>5. Recovery information</h2><p>")
+                .append(fs.detachedRecords.size())
+                .append(" deleted entries are temporarily available through Undo in this session. ")
+                .append("This is not a permanent Recycle Bin.</p>");
+        html.append("<p style='color:#68798c;font-size:small;'>FileNest did not delete, move, quarantine, or modify any files during this report.</p>");
+        html.append("</body></html>");
 
-        report.append("\\nRECOMMENDATIONS\\n");
-        if (percent >= 80) report.append("• Storage usage is high; review large files before importing more.\\n");
-        if (!duplicates.isEmpty()) report.append("• Review exact duplicates; FileNest will not remove them automatically.\\n");
-        if (!oldFiles.isEmpty()) report.append("• Review old files before deciding whether to archive or delete them.\\n");
-        if (!emptyFolders.isEmpty()) report.append("• Check empty folders and remove only those you no longer need.\\n");
-        if (!securityFindings.isEmpty()) report.append("• Review security warnings before opening unfamiliar files.\\n");
-        if (percent < 80 && duplicates.isEmpty() && oldFiles.isEmpty() && emptyFolders.isEmpty()
-                && securityFindings.isEmpty()) report.append("• No major issues were detected by the current checks.\\n");
-        report.append("\\nNo files were deleted, moved, quarantined, or modified by this analysis.");
-
-        JTextArea area = new JTextArea(report.toString(), 26, 62);
-        area.setEditable(false);
-        area.setLineWrap(true);
-        area.setWrapStyleWord(true);
-        area.setCaretPosition(0);
-        area.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        JOptionPane.showMessageDialog(frame, new JScrollPane(area), "FileNest Health Report",
+        JEditorPane report = new JEditorPane("text/html", html.toString());
+        report.setEditable(false);
+        report.setCaretPosition(0);
+        report.setBackground(Color.WHITE);
+        report.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
+        JScrollPane scroll = new JScrollPane(report);
+        scroll.setPreferredSize(new Dimension(700, 620));
+        JOptionPane.showMessageDialog(frame, scroll, "FileNest Health Report",
                 JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private String escapeHtml(String value) {
+        if (value == null) return "";
+        return value.replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;").replace("\"", "&quot;")
+                .replace("'", "&#39;");
     }
 
     private void collectEmptyFolders(FolderNode folder, List<FolderNode> result) {
