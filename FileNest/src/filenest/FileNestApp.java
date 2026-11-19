@@ -1318,41 +1318,112 @@ public class FileNestApp {
         long free = Math.max(0, fs.capacityBytes - used);
         int percent = (int) Math.min(100, Math.round(100.0 * used / fs.capacityBytes));
 
-        List<FileRecord> largest = new ArrayList<>(fs.records.values());
+        List<FileRecord> allFiles = new ArrayList<>(fs.records.values());
+        List<FileRecord> largest = new ArrayList<>(allFiles);
         largest.sort(Comparator.comparingLong((FileRecord r) -> r.size).reversed());
         List<FileRecord> duplicates = fs.findDuplicates();
+        List<FileRecord> oldFiles = new ArrayList<>();
+        Instant oldCutoff = Instant.now().minus(Duration.ofDays(30));
+        for (FileRecord record : allFiles) {
+            if (!record.lastAccess.isAfter(oldCutoff)) oldFiles.add(record);
+        }
+        oldFiles.sort(Comparator.comparing(r -> r.lastAccess));
 
-        StringBuilder report = new StringBuilder("YOUR STORAGE SUMMARY\n\n");
-        report.append("Storage used: ").append(formatBytes(used)).append(" of ")
-                .append(formatBytes(fs.capacityBytes)).append(" (").append(percent).append("%)\n");
-        report.append("Space available: ").append(formatBytes(free)).append("\n");
-        report.append("Files: ").append(fs.records.size()).append("     Folders: ")
-                .append(Math.max(0, fs.folders.size() - 1)).append("\n\n");
+        List<FolderNode> emptyFolders = new ArrayList<>();
+        collectEmptyFolders(fs.root, emptyFolders);
 
-        if (!largest.isEmpty()) {
-            FileRecord biggest = largest.get(0);
-            report.append("Largest file: ").append(biggest.name).append(" (")
-                    .append(formatBytes(biggest.size)).append(")\n");
-        } else {
-            report.append("Largest file: No files yet\n");
+        List<String> securityFindings = new ArrayList<>();
+        int[] scanned = {0};
+        try {
+            scanFileSystemNode(fs.root, securityFindings, new ArrayList<>(), new ArrayList<>(), scanned);
+        } catch (RuntimeException ex) {
+            securityFindings.add("Some items could not be scanned: " + ex.getMessage());
         }
 
-        report.append("Exact duplicate files: ").append(duplicates.size()).append("\n\n");
-        report.append("QUICK TIPS\n");
-        if (percent >= 80) report.append("• Storage is getting full. Review large files before adding more.\n");
-        else report.append("• You have plenty of storage space available.\n");
-        if (!duplicates.isEmpty()) report.append("• Check duplicate files to see whether you still need each copy.\n");
-        if (largest.size() > 1) report.append("• Preview large files before deciding whether to keep them.\n");
-        report.append("• Cleanup Tips only suggests old files; it does not delete anything automatically.");
+        StringBuilder report = new StringBuilder();
+        report.append("FILENEST HEALTH REPORT\\n");
+        report.append("======================\\n\\n");
+        report.append("STORAGE\\n");
+        report.append("Used: ").append(formatBytes(used)).append(" / ").append(formatBytes(fs.capacityBytes))
+                .append(" (").append(percent).append("%)\\n");
+        report.append("Available: ").append(formatBytes(free)).append("\\n");
+        report.append("Files: ").append(allFiles.size()).append("    Folders: ")
+                .append(Math.max(0, fs.folders.size() - 1)).append("\\n\\n");
 
-        JTextArea area = new JTextArea(report.toString(), 18, 48);
+        report.append("SMART ANALYSIS\\n");
+        report.append("Exact duplicate entries: ").append(duplicates.size()).append("\\n");
+        report.append("Large files (100 MB or more): ")
+                .append(largest.stream().filter(r -> r.size >= 100L * 1024 * 1024).count()).append("\\n");
+        report.append("Not accessed in 30+ days: ").append(oldFiles.size()).append("\\n");
+        report.append("Empty folders: ").append(emptyFolders.size()).append("\\n");
+        report.append("Files in LRU history: ").append(fs.lru.size()).append("\\n\\n");
+
+        report.append("LARGEST FILES\\n");
+        if (largest.isEmpty()) report.append("• No files indexed yet.\\n");
+        else for (int i = 0; i < Math.min(5, largest.size()); i++) {
+            FileRecord r = largest.get(i);
+            report.append("• ").append(r.name).append(" — ").append(formatBytes(r.size)).append("\\n");
+        }
+
+        report.append("\\nOLD / RARELY ACCESSED FILES\\n");
+        if (oldFiles.isEmpty()) report.append("• No files are older than the 30-day access threshold.\\n");
+        else for (int i = 0; i < Math.min(5, oldFiles.size()); i++) {
+            FileRecord r = oldFiles.get(i);
+            report.append("• ").append(r.name).append(" — last accessed ").append(formatTime(r.lastAccess))
+                    .append(", opened ").append(r.accessCount).append(" time(s)\\n");
+        }
+
+        report.append("\\nEMPTY FOLDERS\\n");
+        if (emptyFolders.isEmpty()) report.append("• No empty folders found.\\n");
+        else for (int i = 0; i < Math.min(8, emptyFolders.size()); i++)
+            report.append("• ").append(fs.folderPath(emptyFolders.get(i))).append("\\n");
+
+        report.append("\\nDUPLICATES\\n");
+        if (duplicates.isEmpty()) report.append("• No exact duplicates found in indexed FileNest files.\\n");
+        else for (int i = 0; i < Math.min(8, duplicates.size()); i++) {
+            FileRecord r = duplicates.get(i);
+            report.append("• ").append(r.name).append(" — ").append(formatBytes(r.size)).append("\\n");
+        }
+
+        report.append("\\nSECURITY REVIEW\\n");
+        report.append("Files checked: ").append(scanned[0]).append("\\n");
+        report.append("Potential warnings: ").append(securityFindings.size()).append("\\n");
+        if (securityFindings.isEmpty()) report.append("• No suspicious patterns detected by the basic heuristic scanner.\\n");
+        else for (int i = 0; i < Math.min(8, securityFindings.size()); i++)
+            report.append("• ").append(securityFindings.get(i)).append("\\n");
+        report.append("Note: warnings are heuristic indicators, not proof that a file is malicious.\\n");
+
+        report.append("\\nRECOVERY STATUS\\n");
+        report.append("Temporarily recoverable deleted entries (current session Undo): ")
+                .append(fs.detachedRecords.size()).append("\\n");
+        report.append("A dedicated persistent Recycle Bin and quarantine/backup workflow are planned next; ")
+                .append("this count is not a permanent recycle-bin guarantee.\\n");
+
+        report.append("\\nRECOMMENDATIONS\\n");
+        if (percent >= 80) report.append("• Storage usage is high; review large files before importing more.\\n");
+        if (!duplicates.isEmpty()) report.append("• Review exact duplicates; FileNest will not remove them automatically.\\n");
+        if (!oldFiles.isEmpty()) report.append("• Review old files before deciding whether to archive or delete them.\\n");
+        if (!emptyFolders.isEmpty()) report.append("• Check empty folders and remove only those you no longer need.\\n");
+        if (!securityFindings.isEmpty()) report.append("• Review security warnings before opening unfamiliar files.\\n");
+        if (percent < 80 && duplicates.isEmpty() && oldFiles.isEmpty() && emptyFolders.isEmpty()
+                && securityFindings.isEmpty()) report.append("• No major issues were detected by the current checks.\\n");
+        report.append("\\nNo files were deleted, moved, quarantined, or modified by this analysis.");
+
+        JTextArea area = new JTextArea(report.toString(), 26, 62);
         area.setEditable(false);
         area.setLineWrap(true);
         area.setWrapStyleWord(true);
         area.setCaretPosition(0);
-        area.setFont(new Font("SansSerif", Font.PLAIN, 13));
-        JOptionPane.showMessageDialog(frame, new JScrollPane(area), "Quick Storage Analysis",
+        area.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        JOptionPane.showMessageDialog(frame, new JScrollPane(area), "FileNest Health Report",
                 JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void collectEmptyFolders(FolderNode folder, List<FolderNode> result) {
+        if (folder != fs.root && folder.children.isEmpty()) result.add(folder);
+        for (FsNode child : folder.sortedChildren.values()) {
+            if (child instanceof FolderNode childFolder) collectEmptyFolders(childFolder, result);
+        }
     }
 
     private void saveSnapshot() {
