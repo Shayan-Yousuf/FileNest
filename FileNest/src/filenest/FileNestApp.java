@@ -980,6 +980,7 @@ public class FileNestApp {
         List<Path> cleanableScripts = new ArrayList<>();
         List<FileRecord> simulatedRecords = new ArrayList<>();
         int[] scanned = {0};
+        String scanScope = "current folder";
 
         try {
             if (pcBrowsePath != null) {
@@ -990,6 +991,7 @@ public class FileNestApp {
                     File entry = pcBrowseEntries.get(key);
                     if (entry != null) target = entry.toPath();
                 }
+                scanScope = target.toAbsolutePath().normalize().toString();
                 scanPath(target, findings, cleanableScripts, scanned);
             } else {
                 FsNode selected = null;
@@ -999,6 +1001,9 @@ public class FileNestApp {
                     try { selected = fs.findNode(id); } catch (RuntimeException ignored) { }
                 }
                 if (selected == null) selected = fs.folders.get(currentFolderId);
+                if (selected == null) selected = fs.root;
+                scanScope = selected instanceof FolderNode folder
+                        ? fs.folderPath(folder) : fs.folderPath(selected.parent) + "/" + selected.name;
                 scanFileSystemNode(selected, findings, cleanableScripts, simulatedRecords, scanned);
             }
         } catch (RuntimeException ex) {
@@ -1007,7 +1012,9 @@ public class FileNestApp {
         }
 
         StringBuilder report = new StringBuilder();
-        report.append("Files checked: ").append(scanned[0])
+        report.append("Scan scope: ").append(scanScope)
+              .append("\nOnly this selected item and its contents were scanned.\n\n")
+              .append("Files checked: ").append(scanned[0])
               .append("\nPotential warnings: ").append(findings.size());
         if (findings.isEmpty()) {
             report.append("\n\nNo suspicious patterns were detected by FileNest's basic scanner.");
