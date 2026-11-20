@@ -191,19 +191,3 @@ public class FileNestManagerTest {
         System.out.println("PASS: "+label);
     }
 }
-
-        Method m=target.getClass().getDeclaredMethod(name,types); m.setAccessible(true); return m.invoke(target,args);
-    }
-    private static Object field(Object target,String name) throws Exception {
-        Class<?> type=target.getClass();
-        while(type!=null) {
-            try { Field f=type.getDeclaredField(name); f.setAccessible(true); return f.get(target); }
-            catch(NoSuchFieldException ignored) { type=type.getSuperclass(); }
-        }
-        throw new NoSuchFieldException(name);
-    }
-    private static void check(boolean condition,String label) {
-        checks++; if(!condition) throw new AssertionError("FAILED: "+label);
-        System.out.println("PASS: "+label);
-    }
-}
