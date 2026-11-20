@@ -62,7 +62,7 @@ javac --release 17 -Xlint:all -d out src/filenest/FileNestApp.java tests/filenes
 java -Djava.awt.headless=true -cp out filenest.FileNestManagerTest
 ~~~
 
-Windows users can also run run.bat or test.bat; macOS/Linux users can run ./run.sh or ./test.sh. The regression tests use only the JDK and do not open the GUI. The current suite contains 21 checks.
+Windows users can also run run.bat or test.bat; macOS/Linux users can run ./run.sh or ./test.sh. The regression tests use only the JDK and do not open the GUI. The current suite contains 25 checks.
 
 A prebuilt executable JAR is included. If it reports UnsupportedClassVersionError, use a JDK new enough for that JAR or compile from source with the commands above.
 
@@ -73,7 +73,7 @@ FileNest supports two different file workflows:
 - **Copy into FileNest:** copies selected files into the FileNest_Storage folder under the current user's home directory. FileNest then manages a record pointing to that stored copy.
 - **Keep original location (Direct Access):** stores the original absolute path in FileNest without copying the file. If the original is moved or deleted outside FileNest, the saved link may stop working.
 
-Use **Import Files** to select one or more PC files and choose the mode. **Open PC File** registers a selected file as a direct-access entry and opens it. **Open / Preview** opens a real file with the operating system's default application, or shows the in-app preview for a simulated text file.
+Use **Import Files** to select one or more PC files and choose the mode. **Open PC File** registers a selected file as a direct-access entry and opens it. **Open / Preview** opens a real file with the operating system's default application, or shows the in-app preview for a simulated text file. Multi-file import is best-effort per file: one invalid or inaccessible item does not cancel the remaining selections, and the result summary lists added, skipped/already registered, and failed files. Copy mode checks the target folder and capacity before copying, reserves a collision-free name in `FileNest_Storage`, and removes partial copies when an import fails.
 
 FileNest records access when a real file is opened through FileNest. It does **not** monitor unrelated file opens performed elsewhere on the PC or run as a background file-monitoring service.
 

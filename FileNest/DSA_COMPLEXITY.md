@@ -32,7 +32,7 @@ Hash table operations below are expected/average-case O(1), not guaranteed worst
 | Create folder | O(1) average | O(1) |
 | Create simulated file | O(F + D + C + L + log N) | O(C) for content byte conversion/hash; capacity check traverses the tree, Trie insert is O(L), heap insert is O(log N) |
 | Import physical file (direct link) | O(F + D + C + L + log N) | O(1) streaming hash buffer (8 KiB) plus metadata; existing-path duplicate check is O(F), capacity check O(F + D), SHA-256 O(C) |
-| Import physical file (copy) | O(F + D + C + L + log N) | O(1) streaming hash buffer plus metadata; disk copy and SHA-256 each read/write O(C) bytes |
+| Import physical file (copy) | O(S + F + D + C + L + log N) expected | O(1) 8 KiB hash buffer plus metadata; S is the number of occupied same-basename candidates checked before an atomic storage-name reservation; copy and hashing process O(C) bytes |
 | Open physical file and record access | O(N + log N) plus OS launch | O(N) snapshot preserves exact previous LRU order; underlying LRU touch is expected O(1) |
 | Rename folder | O(1) average | O(1) |
 | Rename file | O(L) | Trie path update; O(L) possible new Trie nodes |
@@ -64,7 +64,8 @@ P is the number of heap entries polled during cleanup and M is the heap size at 
 - Folder moves validate cycles by walking destination ancestors, O(H), rather than traversing the moved subtree.
 - Recursive deletion visits each subtree node and updates file indexes. File Trie removals add the sum of filename lengths; restoring files also adds heap insertions.
 - Undo for access stores the prior LRU ordering, so that specific undo is O(N) in time and space. This is an intentional correctness trade-off for restoring the exact prior recency order.
-- Physical import hashes bytes in a streaming 8 KiB buffer, so hash working memory is constant with respect to file size. Copy mode additionally performs O(C) disk I/O.
+- Physical import hashes bytes in a streaming 8 KiB buffer, so hash working memory is constant with respect to file size. Copy mode additionally performs O(C) disk I/O. A candidate storage name is reserved with `Files.createFile`, preventing a check-then-create overwrite race; searching suffixes costs O(S) filesystem/name checks. Capacity and virtual-folder conflicts are checked before the copy where possible, and partial copies are removed when a later step fails.
+- Multi-file import is best-effort rather than one all-or-nothing transaction: each successful file is committed independently, later files continue after a failure, and the UI reports added, skipped, and failed counts. Total batch time is the sum of the individual import costs.
 - Direct-access import scans existing records to avoid registering the same original path twice, so that check is O(F). The subsequent capacity check traverses the folder tree.
 - Rename and Move of a real-file entry change the FileNest virtual name/location only; the physical file itself is not renamed or moved.
 - Duplicate detection hashes the actual bytes of physical files and the stored content string of simulated files. SHA-256 hashing is O(C) for C bytes.
