@@ -1189,22 +1189,43 @@ public class FileNestApp {
                 null, choices, choices[0]);
         if (choice < 0 || choice == 2) return;
         boolean copy = choice == 0;
+
+        // Best-effort batch: one failed file must not cancel the remaining imports.
         int added = 0;
-        try {
-            for (File source : selected) {
-                if (source.isFile()) {
-                    fs.addPhysicalFile(currentFolderId, source.toPath(), copy);
-                    added++;
-                }
+        int skipped = 0;
+        List<String> failures = new ArrayList<>();
+        for (File source : selected) {
+            if (source == null || !source.isFile()) {
+                failures.add((source == null ? "(unknown file)" : source.getName())
+                        + " — unavailable or not a regular file");
+                continue;
             }
-            refreshAll();
-            status(added + " real file(s) added to FileNest.");
-            JOptionPane.showMessageDialog(frame, added + " file(s) added successfully. Double-click a file or select it and press Open / Preview.",
-                    "Import complete", JOptionPane.INFORMATION_MESSAGE);
-        } catch (IOException | RuntimeException ex) {
-            refreshAll();
-            error("Import stopped: " + ex.getMessage());
+            int previousCount = fs.records.size();
+            try {
+                fs.addPhysicalFile(currentFolderId, source.toPath(), copy);
+                if (fs.records.size() > previousCount) added++;
+                else skipped++; // A direct-access path may already be registered.
+            } catch (IOException | RuntimeException ex) {
+                String reason = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
+                failures.add(source.getName() + " — " + reason);
+            }
         }
+
+        refreshAll();
+        StringBuilder summary = new StringBuilder()
+                .append("Added: ").append(added)
+                .append("\nSkipped / already registered: ").append(skipped)
+                .append("\nFailed: ").append(failures.size());
+        int shown = Math.min(12, failures.size());
+        if (shown > 0) {
+            summary.append("\n\nFiles that could not be imported:");
+            for (int i = 0; i < shown; i++) summary.append("\n• ").append(failures.get(i));
+            if (failures.size() > shown) summary.append("\n…and ").append(failures.size() - shown).append(" more.");
+        }
+        JOptionPane.showMessageDialog(frame, summary.toString(), "Import results",
+                failures.isEmpty() ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
+        status("Import finished: " + added + " added, " + skipped + " skipped, "
+                + failures.size() + " failed.");
     }
 
     private void openPhysicalFile(FileRecord record) {
@@ -1717,35 +1738,93 @@ public class FileNestApp {
                 for (FileRecord existing : records.values()) {
                     if (originalPath.equals(existing.physicalPath)) return existing;
                 }
+                String name = original.getFileName().toString();
+                validateName(name);
+                if (folder.children.containsKey(name))
+                    throw new IllegalArgumentException("A file or folder named '" + name + "' already exists in this FileNest folder.");
             }
+
+            long sourceSize = Files.size(original);
+            if (sourceSize > capacityBytes - totalSize())
+                throw new IllegalArgumentException("The FileNest 10 GB simulated capacity would be exceeded.");
+
             Path stored = original;
-            if (copy) {
-                Path storage = Path.of(System.getProperty("user.home"), "FileNest_Storage");
-                Files.createDirectories(storage);
-                String fileName = original.getFileName().toString();
-                Path destination = storage.resolve(fileName);
-                String base = fileName;
-                String extension = "";
-                int dot = fileName.lastIndexOf('.');
-                if (dot > 0) { base = fileName.substring(0, dot); extension = fileName.substring(dot); }
-                int suffix = 1;
-                while (Files.exists(destination)) destination = storage.resolve(base + "_" + suffix++ + extension);
-                Files.copy(original, destination, StandardCopyOption.COPY_ATTRIBUTES);
-                stored = destination.toAbsolutePath().normalize();
+            boolean copied = false;
+            try {
+                if (copy) {
+                    Path storage = Path.of(System.getProperty("user.home"), "FileNest_Storage");
+                    Files.createDirectories(storage);
+                    stored = reserveCopyDestination(storage, original.getFileName().toString(), folder);
+                    try {
+                        // The destination was atomically reserved with createFile, so another
+                        // import cannot claim the same name between selection and copying.
+                        Files.copy(original, stored, StandardCopyOption.REPLACE_EXISTING,
+                                StandardCopyOption.COPY_ATTRIBUTES);
+                        copied = true;
+                    } catch (IOException | RuntimeException ex) {
+                        try { Files.deleteIfExists(stored); }
+                        catch (IOException cleanup) { ex.addSuppressed(cleanup); }
+                        throw ex;
+                    }
+                }
+
+                String name = stored.getFileName().toString();
+                validateName(name);
+                if (folder.children.containsKey(name))
+                    throw new IllegalArgumentException("A file or folder named '" + name + "' already exists in this FileNest folder.");
+                long size = Files.size(stored);
+                if (size > capacityBytes - totalSize())
+                    throw new IllegalArgumentException("The FileNest 10 GB simulated capacity would be exceeded.");
+                String fingerprint = hashPhysicalFile(stored);
+                String id = UUID.randomUUID().toString();
+                FileNode node = new FileNode(id, name, folder);
+                FileRecord record = new FileRecord(id, name, folderId, size, "", stored.toString(), copy, fingerprint);
+                try {
+                    folder.addChild(node);
+                    registerFile(record, node);
+                    undoStack.push(() -> { folder.removeChild(name); unregisterFile(record); detachedRecords.remove(record.id); });
+                    return record;
+                } catch (RuntimeException ex) {
+                    folder.removeChild(name);
+                    FileRecord partiallyRegistered = records.get(id);
+                    if (partiallyRegistered != null) {
+                        unregisterFile(partiallyRegistered);
+                        detachedRecords.remove(id);
+                    }
+                    throw ex;
+                }
+            } catch (IOException | RuntimeException ex) {
+                if (copied) {
+                    try { Files.deleteIfExists(stored); }
+                    catch (IOException cleanup) { ex.addSuppressed(cleanup); }
+                }
+                throw ex;
             }
-            String name = stored.getFileName().toString();
-            validateName(name);
-            if (folder.children.containsKey(name)) throw new IllegalArgumentException("A file or folder named '" + name + "' already exists in this FileNest folder.");
-            long size = Files.size(stored);
-            if (totalSize() + size > capacityBytes) throw new IllegalArgumentException("The FileNest 10 GB simulated capacity would be exceeded.");
-            String fingerprint = hashPhysicalFile(stored);
-            String id = UUID.randomUUID().toString();
-            FileNode node = new FileNode(id, name, folder);
-            folder.addChild(node);
-            FileRecord record = new FileRecord(id, name, folderId, size, "", stored.toString(), copy, fingerprint);
-            registerFile(record, node);
-            undoStack.push(() -> { folder.removeChild(name); unregisterFile(record); detachedRecords.remove(record.id); });
-            return record;
+        }
+
+        /**
+         * Reserves a collision-free name in storage and in the target virtual folder.
+         * Files.createFile performs the reservation atomically.
+         */
+        private Path reserveCopyDestination(Path storage, String fileName, FolderNode folder) throws IOException {
+            String base = fileName;
+            String extension = "";
+            int dot = fileName.lastIndexOf('.');
+            if (dot > 0) {
+                base = fileName.substring(0, dot);
+                extension = fileName.substring(dot);
+            }
+            for (int suffix = 0; ; suffix++) {
+                String candidateName = suffix == 0 ? fileName : base + "_" + suffix + extension;
+                validateName(candidateName);
+                if (folder.children.containsKey(candidateName)) continue;
+                Path candidate = storage.resolve(candidateName);
+                try {
+                    return Files.createFile(candidate);
+                } catch (java.nio.file.FileAlreadyExistsException ignored) {
+                    // Try the next suffix without overwriting an existing stored file.
+                }
+            }
         }
 
         private String hashPhysicalFile(Path file) throws IOException {

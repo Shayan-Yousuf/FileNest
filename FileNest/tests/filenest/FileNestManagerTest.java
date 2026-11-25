@@ -1,7 +1,11 @@
 package filenest;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.util.*;
 
 /** Dependency-free regression tests for FileNest's private DSA manager. */
@@ -59,6 +63,63 @@ public class FileNestManagerTest {
         call(fs,"undo",new Class<?>[]{});
         check(((Map<?,?>)field(fs,"records")).size()==2,"Undo file deletion restores record");
 
+        String previousHome = System.getProperty("user.home");
+        Path importHome = Files.createTempDirectory("filenest-import-home");
+        Path capacityHome = null;
+        try {
+            System.setProperty("user.home", importHome.toString());
+            Path copySource = Files.writeString(importHome.resolve("shared.txt"), "physical copy bytes");
+            Path directSource = Files.writeString(importHome.resolve("direct.txt"), "direct access bytes");
+
+            Object importFs = ctor.newInstance();
+            call(importFs, "createFile", new Class<?>[]{String.class,String.class,long.class,String.class},
+                    "root", "shared.txt", 1L, "existing virtual entry");
+            Object copied = call(importFs, "addPhysicalFile",
+                    new Class<?>[]{String.class,Path.class,boolean.class}, "root", copySource, true);
+            Path copiedPath = Path.of((String) field(copied, "physicalPath"));
+            check(Files.isRegularFile(copiedPath)
+                            && copiedPath.getFileName().toString().equals("shared_1.txt")
+                            && (boolean) field(copied, "managedCopy"),
+                    "Copy import reserves a collision-free name without overwriting virtual entries");
+            String expectedFingerprint = HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(copySource)));
+            check(expectedFingerprint.equals(field(copied, "fingerprint")),
+                    "Copied-file fingerprint matches the physical bytes");
+
+            Object directFs = ctor.newInstance();
+            Object directFirst = call(directFs, "addPhysicalFile",
+                    new Class<?>[]{String.class,Path.class,boolean.class}, "root", directSource, false);
+            Object directSecond = call(directFs, "addPhysicalFile",
+                    new Class<?>[]{String.class,Path.class,boolean.class}, "root", directSource, false);
+            check(field(directFirst, "id").equals(field(directSecond, "id"))
+                            && ((Map<?,?>) field(directFs, "records")).size() == 1
+                            && !(boolean) field(directFirst, "managedCopy"),
+                    "Repeated direct import reuses the existing original-path entry");
+
+            capacityHome = Files.createTempDirectory("filenest-capacity-home");
+            System.setProperty("user.home", capacityHome.toString());
+            Path tooLarge = Files.writeString(capacityHome.resolve("too-large.txt"), "too large");
+            Object capacityFs = ctor.newInstance();
+            long capacity = (long) field(capacityFs, "capacityBytes");
+            call(capacityFs, "createFile",
+                    new Class<?>[]{String.class,String.class,long.class,String.class},
+                    "root", "nearly-full.bin", capacity - 1, "reserved simulated capacity");
+            boolean capacityRejected = false;
+            try {
+                call(capacityFs, "addPhysicalFile",
+                        new Class<?>[]{String.class,Path.class,boolean.class}, "root", tooLarge, true);
+            } catch (InvocationTargetException ex) { capacityRejected = true; }
+            check(capacityRejected
+                            && !Files.exists(capacityHome.resolve("FileNest_Storage"))
+                            && ((Map<?,?>) field(capacityFs, "records")).size() == 1,
+                    "Capacity rejection happens before a storage copy is created");
+        } finally {
+            if (previousHome == null) System.clearProperty("user.home");
+            else System.setProperty("user.home", previousHome);
+            deleteTree(capacityHome);
+            deleteTree(importHome);
+        }
+
         File snapshot=File.createTempFile("filenest-test", ".fns");
         List<?> lruBeforeSave = new ArrayList<>((Collection<?>)field(fs,"lru").getClass().getMethod("keySet").invoke(field(fs,"lru")));
         call(fs,"save",new Class<?>[]{File.class},snapshot);
@@ -105,6 +166,13 @@ public class FileNestManagerTest {
         check(folderCreateUndone,"Undo folder creation");
 
         System.out.println("PASS: " + checks + " FileNest regression checks");
+    }
+
+    private static void deleteTree(Path directory) throws IOException {
+        if (directory == null || !Files.exists(directory)) return;
+        try (var paths = Files.walk(directory)) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+        }
     }
 
     private static Object call(Object target,String name,Class<?>[] types,Object... args) throws Exception {
