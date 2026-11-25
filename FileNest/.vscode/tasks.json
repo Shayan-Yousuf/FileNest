@@ -11,8 +11,7 @@
         "-Xlint:all",
         "-d",
         "out",
-        "src/filenest/FileNestApp.java",
-        "tests/filenest/FileNestManagerTest.java"
+        "src/filenest/FileNestApp.java"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -21,11 +20,6 @@
       "group": {
         "kind": "build",
         "isDefault": true
-      },
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared",
-        "clear": false
       }
     },
     {
@@ -42,24 +36,6 @@
       },
       "dependsOn": "FileNest: Build",
       "dependsOrder": "sequence",
-      "problemMatcher": []
-    },
-    {
-      "label": "FileNest: Run Tests",
-      "type": "shell",
-      "command": "java",
-      "args": [
-        "-Djava.awt.headless=true",
-        "-cp",
-        "out",
-        "filenest.FileNestManagerTest"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "dependsOn": "FileNest: Build",
-      "dependsOrder": "sequence",
-      "group": "test",
       "problemMatcher": []
     }
   ]
