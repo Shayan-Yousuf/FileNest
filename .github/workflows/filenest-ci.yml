@@ -39,9 +39,14 @@ jobs:
       - name: Verify executable JAR and Java 17 bytecode
         working-directory: FileNest
         run: |
-          jar --list --file FileNest.jar | grep -qx 'filenest/FileNestApp.class'
-          unzip -p FileNest.jar META-INF/MANIFEST.MF | grep -q '^Main-Class: filenest.FileNestApp$'
-          javap -verbose -classpath FileNest.jar filenest.FileNestApp | grep -q 'major version: 61'
+          set -euo pipefail
+          jar --list --file FileNest.jar | grep -Fq 'filenest/FileNestApp.class'
+          manifest_main=$(unzip -p FileNest.jar META-INF/MANIFEST.MF | tr -d '\r' | sed -n 's/^Main-Class: //p')
+          test "$manifest_main" = "filenest.FileNestApp"
+          class_major=$(unzip -p FileNest.jar filenest/FileNestApp.class | od -An -t x1 -j 6 -N 2 | tr -d ' \n')
+          echo "JAR main class: $manifest_main"
+          echo "Class major-version bytes: $class_major (003d means Java 17)"
+          test "$class_major" = "003d"
 
       - name: Upload executable JAR
         uses: actions/upload-artifact@v4
