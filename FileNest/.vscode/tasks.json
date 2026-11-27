@@ -37,6 +37,28 @@
       "dependsOn": "FileNest: Build",
       "dependsOrder": "sequence",
       "problemMatcher": []
+    },
+    {
+      "label": "FileNest: Build JAR",
+      "type": "shell",
+      "command": "jar",
+      "args": [
+        "--create",
+        "--file",
+        "FileNest.jar",
+        "--main-class",
+        "filenest.FileNestApp",
+        "-C",
+        "out",
+        "."
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "FileNest: Build",
+      "dependsOrder": "sequence",
+      "problemMatcher": [],
+      "group": "build"
     }
   ]
 }
