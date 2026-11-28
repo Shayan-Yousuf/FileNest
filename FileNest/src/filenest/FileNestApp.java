@@ -1055,12 +1055,17 @@ public class FileNestApp {
 
     // START: scanSelection - Starts the selected-file or selected-folder content scan and displays findings.
     private void scanSelection() {
+        // SCAN START: This method runs when the user clicks the Scan button.
+        // It determines whether the user is browsing a real PC folder or FileNest's virtual tree,
+        // sends the selected target to the appropriate recursive scanner, and displays warnings.
+        // The scan reports suspicious indicators only; it does not claim to be a full antivirus.
         List<String> findings = new ArrayList<>();
         List<Path> cleanableScripts = new ArrayList<>();
         List<FileRecord> simulatedRecords = new ArrayList<>();
         int[] scanned = {0};
         String scanScope = "current folder";
 
+        // STEP 1 - Determine the scan target and scan either the PC path or FileNest item.
         try {
             if (pcBrowsePath != null) {
                 int row = fileTable.getSelectedRow();
@@ -1090,6 +1095,7 @@ public class FileNestApp {
             return;
         }
 
+        // STEP 2 - Build a readable scan report with the number of checked files and warnings.
         StringBuilder report = new StringBuilder();
         report.append("Scan scope: ").append(scanScope)
               .append("\nOnly this selected item and its contents were scanned.\n\n")
@@ -1104,6 +1110,7 @@ public class FileNestApp {
             if (findings.size() > shown) report.append("\n…and ").append(findings.size() - shown).append(" more.");
         }
 
+        // STEP 3 - Offer separate cleaned copies for eligible scripts; original files are preserved.
         if (!cleanableScripts.isEmpty()) {
             report.append("\n\n").append(cleanableScripts.size())
                   .append(" script file(s) contain suspicious command lines.");
@@ -1119,9 +1126,11 @@ public class FileNestApp {
                             ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
         }
         status("Security scan finished: " + scanned[0] + " file(s), " + findings.size() + " warning(s).");
+        // SCAN END: findings have been shown and the scan status has been updated.
     // END: scanSelection
     }
 
+    // SCAN HELPER: Recursively visits FileNest's virtual folder tree and checks each file record.
     private void scanFileSystemNode(FsNode node, List<String> findings, List<Path> cleanableScripts,
                                     List<FileRecord> simulatedRecords, int[] scanned) {
         if (node == null) return;
@@ -1148,6 +1157,7 @@ public class FileNestApp {
     }
 
     // START: scanPath - Recursively scans a path and gathers findings for supported files.
+    // SCAN HELPER: Walks a real PC directory (up to the configured file limit) and checks each file.
     private void scanPath(Path target, List<String> findings, List<Path> cleanableScripts, int[] scanned) {
         if (Files.isRegularFile(target)) {
             scanned[0]++;
@@ -1170,6 +1180,7 @@ public class FileNestApp {
     }
 
     // START: scanSingleFile - Reads and checks one file for the scan's configured indicators.
+    // SCAN HELPER: Checks one physical file's extension and, for supported small scripts, its text.
     private void scanSingleFile(Path path, List<String> findings, List<Path> cleanableScripts) {
         String ext = extensionOf(path.getFileName().toString());
         boolean riskyType = RISKY_EXTENSIONS.contains(ext);
@@ -1195,6 +1206,7 @@ public class FileNestApp {
     }
 
     // START: suspiciousLines - Checks text lines against the scan's configured suspicious-pattern rules.
+    // SCAN HELPER: Searches script text for configured suspicious command signatures.
     private List<String> suspiciousLines(String content) {
         List<String> matches = new ArrayList<>();
         if (content == null || content.isBlank()) return matches;
@@ -1470,7 +1482,11 @@ public class FileNestApp {
 
     // START: showAnalytics - Calculates and displays storage, file, folder, and duplicate analytics.
     private void showAnalytics() {
-        // Analyze only the selected item. If nothing is selected, analyze the folder currently open.
+        // ANALYSIS START: This method runs when the user clicks the Analyze button.
+        // It gathers statistics for the selected file/folder (or the current folder by default),
+        // calculates storage usage, finds large/old/duplicate files and empty folders,
+        // runs the basic safety scan, then builds and displays the Folder Health Report.
+        // STEP 1 - Select the analysis target.
         FsNode target = null;
         int selectedRow = fileTable == null ? -1 : fileTable.getSelectedRow();
         if (selectedRow >= 0 && pcBrowsePath == null) {
@@ -1480,6 +1496,7 @@ public class FileNestApp {
         if (target == null) target = fs.folders.get(currentFolderId);
         if (target == null) target = fs.root;
 
+        // STEP 2 - Collect all files and subfolders inside the selected analysis target.
         List<FileRecord> scopedFiles = new ArrayList<>();
         List<FolderNode> scopedFolders = new ArrayList<>();
         if (target instanceof FileNode) {
@@ -1489,10 +1506,12 @@ public class FileNestApp {
             collectAnalysisContents(folder, scopedFiles, scopedFolders);
         }
 
+        // STEP 3 - CALCULATE ANALYTICS: total size, capacity percentage and largest files.
         long used = scopedFiles.stream().mapToLong(r -> r.size).sum();
         int percent = (int) Math.min(100, Math.round(100.0 * used / fs.capacityBytes));
         List<FileRecord> largest = new ArrayList<>(scopedFiles);
         largest.sort(Comparator.comparingLong((FileRecord r) -> r.size).reversed());
+        // STEP 4 - Find files whose last recorded access is at least 30 days old.
         Instant oldCutoff = Instant.now().minus(Duration.ofDays(30));
         List<FileRecord> oldFiles = new ArrayList<>();
         for (FileRecord record : scopedFiles) {
@@ -1500,6 +1519,7 @@ public class FileNestApp {
         }
         oldFiles.sort(Comparator.comparing(r -> r.lastAccess));
 
+        // STEP 5 - Group files by their SHA-256 fingerprint to identify matching content.
         Map<String, List<FileRecord>> duplicateGroups = new LinkedHashMap<>();
         for (FileRecord record : scopedFiles)
             duplicateGroups.computeIfAbsent(record.fingerprint, key -> new ArrayList<>()).add(record);
@@ -1511,6 +1531,8 @@ public class FileNestApp {
         for (FolderNode folder : scopedFolders)
             if (folder != target && folder.children.isEmpty()) emptyFolders.add(folder);
 
+        // STEP 6 - BASIC SAFETY SCAN: analysis calls the scanner to check this same target.
+        // This is a heuristic check, not a full antivirus scan.
         List<String> securityFindings = new ArrayList<>();
         int[] scanned = {0};
         try {
@@ -1519,6 +1541,7 @@ public class FileNestApp {
             securityFindings.add("Some items could not be checked: " + ex.getMessage());
         }
 
+        // STEP 7 - BUILD REPORT: format the calculated results as an HTML report for the GUI.
         String locationName = target.name;
         String locationPath = target instanceof FolderNode folder ? fs.folderPath(folder) : fs.folderPath(target.parent) + "/" + target.name;
         StringBuilder html = new StringBuilder("<html><body style='font-family:Segoe UI,Arial; color:#26364a;'>");
@@ -1618,6 +1641,7 @@ public class FileNestApp {
         JOptionPane.showMessageDialog(frame, scroll, "Analysis: " + locationName,
                 JOptionPane.INFORMATION_MESSAGE);
         status("Analysis completed for " + locationName + " (" + scopedFiles.size() + " file(s)).");
+        // ANALYSIS END: the report has been displayed and the status bar has been updated.
     // END: showAnalytics
     }
 
