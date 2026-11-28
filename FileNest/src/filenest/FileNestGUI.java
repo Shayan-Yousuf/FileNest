@@ -27,7 +27,7 @@ import static filenest.FileNestApp.*;
  * FileNestGUI - Swing presentation layer for the FileNest application.
  * Contains window layout, visual components, event handling, and user interaction.
  */
-class FileNestGUI {
+public class FileNestGUI {
     private final FileSystemManager fs = new FileSystemManager();
     private JFrame frame;
     private JTree folderTree;
