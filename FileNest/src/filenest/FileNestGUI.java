@@ -50,7 +50,7 @@ class FileNestGUI {
 
     // ==================== GUI START ====================
     // START: show - Builds and displays the complete FileNest desktop window.
-    private void show() {
+    void show() {
         fs.seedDemoData();
         frame = new JFrame("FileNest | Simulated File Manager");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
