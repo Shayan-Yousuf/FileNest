@@ -404,7 +404,7 @@ public class FileNestApp {
         }
 
         // START: findNode - Handles the findNode operation in the FileNest application.
-        private FsNode findNode(String id) {
+        FsNode findNode(String id) {
             if (root.id.equals(id)) return root;
             FolderNode folder = folders.get(id);
             if (folder != null) return folder;
