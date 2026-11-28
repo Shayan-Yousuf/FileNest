@@ -29,7 +29,7 @@ jobs:
         run: |
           rm -rf out
           mkdir -p out
-          javac --release 17 -Xlint:all -d out src/filenest/FileNestApp.java
+          javac --release 17 -Xlint:all -d out src/filenest/FileNestApp.java src/filenest/FileNestGUI.java
 
       - name: Build executable JAR
         working-directory: FileNest
