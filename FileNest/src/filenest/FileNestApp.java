@@ -23,7 +23,7 @@ import java.util.List;
 
 /**
  * FileNest - Smart File System Simulator
- * Java 17+, Swing GUI, in-memory simulated file system.
+ * Java 17+ application entry point and in-memory file-system backend.
  */
 public class FileNestApp {
     // START: main - Application entry point. Opens the separately defined Swing GUI.
