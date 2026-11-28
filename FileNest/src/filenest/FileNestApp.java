@@ -45,10 +45,13 @@ public class FileNestApp {
     private String currentFolderId = "root";
     private final Deque<String> accessHistory = new ArrayDeque<>();
 
+    // START: main - Application entry point. Schedules the Swing GUI to start on the Event Dispatch Thread.
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new FileNestApp().show());
+    // END: main
     }
 
+    // START: show - Builds and displays the complete FileNest desktop window. GUI START/END.
     private void show() {
         fs.seedDemoData();
         frame = new JFrame("FileNest | Simulated File Manager");
@@ -75,8 +78,10 @@ public class FileNestApp {
                 }
             }
         });
+    // END: show
     }
 
+    // START: buildHeader - Builds the top header, navigation path, prefix-search controls, and theme switch.
     private JComponent buildHeader() {
         JPanel header = new JPanel(new BorderLayout(14, 0));
         header.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(39, 54, 77)), new EmptyBorder(15, 22, 15, 22)));
@@ -127,8 +132,10 @@ public class FileNestApp {
         headerActions.add(themeToggleButton);
         header.add(headerActions, BorderLayout.EAST);
         return header;
+    // END: buildHeader
     }
 
+    // START: buildMain - Combines the sidebar and main workspace into the central GUI layout.
     private JComponent buildMain() {
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, buildSidebar(), buildWorkspace());
         split.setBorder(null);
@@ -140,8 +147,10 @@ public class FileNestApp {
         split.setDividerLocation(218);
         split.setMinimumSize(new Dimension(700, 400));
         return split;
+    // END: buildMain
     }
 
+    // START: buildSidebar - Builds the sidebar, folder tree, pinned PC locations, drive shortcuts, and create buttons.
     private JComponent buildSidebar() {
         JPanel panel = new JPanel(new BorderLayout(8, 10));
         panel.setBorder(new EmptyBorder(22, 16, 18, 14));
@@ -180,6 +189,7 @@ public class FileNestApp {
         folderTree.setForeground(new Color(135, 190, 250));
         folderTree.setFont(new Font("SansSerif", Font.PLAIN, 12));
         folderTree.setBorder(new EmptyBorder(5, 2, 5, 2));
+        // START: DefaultTreeCellRenderer - Handles the DefaultTreeCellRenderer operation in the FileNest application.
         folderTree.setCellRenderer(new DefaultTreeCellRenderer() {
             @Override public Component getTreeCellRendererComponent(JTree tree, Object value, boolean selected,
                     boolean expanded, boolean leaf, int row, boolean hasFocus) {
@@ -192,6 +202,7 @@ public class FileNestApp {
                 label.setBorder(new EmptyBorder(3, 4, 3, 4));
                 return label;
             }
+        // END: DefaultTreeCellRenderer
         });
         folderTree.addTreeSelectionListener(e -> {
             Object node = folderTree.getLastSelectedPathComponent();
@@ -222,8 +233,10 @@ public class FileNestApp {
         actions.add(newFile);
         panel.add(actions, BorderLayout.SOUTH);
         return panel;
+    // END: buildSidebar
     }
 
+    // START: sidebarHeading - Handles the sidebarHeading operation in the FileNest application.
     private JLabel sidebarHeading(String text) {
         JLabel label = new JLabel(text);
         label.setForeground(new Color(105, 145, 199));
@@ -231,8 +244,10 @@ public class FileNestApp {
         label.setBorder(new EmptyBorder(12, 10, 7, 4));
         label.setAlignmentX(Component.LEFT_ALIGNMENT);
         return label;
+    // END: sidebarHeading
     }
 
+    // START: sidebarButton - Handles the sidebarButton operation in the FileNest application.
     private JButton sidebarButton(String text, Runnable action) {
         JButton button = new JButton(text);
         button.setHorizontalAlignment(SwingConstants.LEFT);
@@ -244,8 +259,10 @@ public class FileNestApp {
         button.setAlignmentX(Component.LEFT_ALIGNMENT);
         button.addActionListener(e -> action.run());
         return button;
+    // END: sidebarButton
     }
 
+    // START: resolveWindowsKnownFolder - Resolves a Windows known folder and falls back to common user-folder paths.
     private Path resolveWindowsKnownFolder(String specialFolder, String fallbackName) {
         if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
             try {
@@ -272,13 +289,17 @@ public class FileNestApp {
         candidates.add(Path.of(home, "OneDrive - Personal", fallbackName));
         for (Path candidate : candidates) if (Files.isDirectory(candidate)) return candidate;
         return candidates.get(0);
+    // END: resolveWindowsKnownFolder
     }
 
+    // START: isImageFile - Checks whether a filename has a supported image extension.
     private boolean isImageFile(File file) {
         String name = file.getName().toLowerCase(Locale.ROOT);
         return name.matches(".*\\.(png|jpe?g|gif|bmp|wbmp|tif|tiff)$");
+    // END: isImageFile
     }
 
+    // START: getThumbnail - Loads, scales, and caches an image thumbnail for the preview/table.
     private ImageIcon getThumbnail(File file, int width, int height) {
         if (file == null || !file.isFile() || !isImageFile(file)) return null;
         String cacheKey = file.getAbsolutePath() + "|" + file.lastModified() + "|" + width + "x" + height;
@@ -296,12 +317,16 @@ public class FileNestApp {
         } catch (IOException | RuntimeException ex) {
             return null;
         }
+    // END: getThumbnail
     }
 
+    // START: browseDrive - Opens a selected PC drive in direct-browse mode.
     private void browseDrive(File drive) {
         browsePcFolder(drive.toPath());
+    // END: browseDrive
     }
 
+    // START: browsePcFolder - Displays a real PC folder without copying its contents into FileNest.
     private void browsePcFolder(Path directory) {
         if (!Files.isDirectory(directory) || !Files.isReadable(directory)) {
             error("This folder is unavailable or you do not have permission to access it.");
@@ -319,12 +344,16 @@ public class FileNestApp {
         }
         updatePreviewPanel();
         status("Browsing PC folder directly: " + pcBrowsePath);
+    // END: browsePcFolder
     }
 
+    // START: choosePcFolder - Handles the choosePcFolder operation in the FileNest application.
     private void choosePcFolder(String folderName) {
         browsePcFolder(Path.of(System.getProperty("user.home"), folderName));
+    // END: choosePcFolder
     }
 
+    // START: navigateBack - Navigates to the parent PC folder or parent FileNest folder.
     private void navigateBack() {
         if (pcBrowsePath != null) {
             Path parent = pcBrowsePath.getParent();
@@ -354,8 +383,10 @@ public class FileNestApp {
         refreshTable();
         updatePreviewPanel();
         status("Returned to parent folder.");
+    // END: navigateBack
     }
 
+    // START: findTreePath - Handles the findTreePath operation in the FileNest application.
     private TreePath findTreePath(String folderId) {
         DefaultMutableTreeNode root = (DefaultMutableTreeNode) treeModel.getRoot();
         Enumeration<?> nodes = root.depthFirstEnumeration();
@@ -367,8 +398,10 @@ public class FileNestApp {
             }
         }
         return null;
+    // END: findTreePath
     }
 
+    // START: buildWorkspace - Builds the main file workspace, toolbar, file table, preview, and action controls.
     private JComponent buildWorkspace() {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
         panel.setBorder(new EmptyBorder(20, 22, 18, 22));
@@ -429,8 +462,10 @@ public class FileNestApp {
         panel.add(top, BorderLayout.NORTH);
 
         String[] columns = {"Name", "Type", "Size", "Last Accessed", "Access Count", "ID"};
+        // START: DefaultTableModel - Handles the DefaultTableModel operation in the FileNest application.
         tableModel = new DefaultTableModel(columns, 0) {
             @Override public boolean isCellEditable(int row, int col) { return false; }
+        // END: DefaultTableModel
         };
         fileTable = new JTable(tableModel);
         fileTable.setRowHeight(52);
@@ -441,17 +476,21 @@ public class FileNestApp {
         InputMap fileInputMap = fileTable.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
         ActionMap fileActionMap = fileTable.getActionMap();
         fileInputMap.put(KeyStroke.getKeyStroke("DELETE"), "filenest-delete-selected");
+        // START: AbstractAction - Handles the AbstractAction operation in the FileNest application.
         fileActionMap.put("filenest-delete-selected", new AbstractAction() {
             @Override public void actionPerformed(java.awt.event.ActionEvent e) {
                 if (fileTable.getSelectedRow() >= 0) deleteSelected();
                 else status("Select a file or folder first, then press Delete.");
             }
+        // END: AbstractAction
         });
         fileInputMap.put(KeyStroke.getKeyStroke("BACK_SPACE"), "filenest-go-back");
+        // START: AbstractAction - Handles the AbstractAction operation in the FileNest application.
         fileActionMap.put("filenest-go-back", new AbstractAction() {
             @Override public void actionPerformed(java.awt.event.ActionEvent e) {
                 navigateBack();
             }
+        // END: AbstractAction
         });
         fileTable.setShowGrid(false);
         fileTable.setIntercellSpacing(new Dimension(0, 0));
@@ -464,6 +503,7 @@ public class FileNestApp {
         fileTable.setRowSelectionAllowed(true);
         fileTable.setGridColor(new Color(48, 48, 48));
         fileTable.setTableHeader(null);
+        // START: DefaultTableCellRenderer - Handles the DefaultTableCellRenderer operation in the FileNest application.
         fileTable.getColumnModel().getColumn(0).setCellRenderer(new DefaultTableCellRenderer() {
             @Override public Component getTableCellRendererComponent(JTable table, Object value, boolean selected,
                     boolean focused, int row, int column) {
@@ -480,6 +520,7 @@ public class FileNestApp {
                 }
                 return label;
             }
+        // END: DefaultTableCellRenderer
         });
         fileTable.setShowHorizontalLines(false);
         fileTable.setShowVerticalLines(false);
@@ -603,8 +644,10 @@ public class FileNestApp {
         bottom.add(storageBar, BorderLayout.CENTER);
         panel.add(bottom, BorderLayout.SOUTH);
         return panel;
+    // END: buildWorkspace
     }
 
+    // START: createButton - Handles the createButton operation in the FileNest application.
     private JButton createButton(String text, boolean primary) {
         JButton button = new JButton(text);
         button.setFocusPainted(false);
@@ -617,8 +660,10 @@ public class FileNestApp {
         button.setOpaque(true);
         button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         return button;
+    // END: createButton
     }
 
+    // START: styleInput - Handles the styleInput operation in the FileNest application.
     private void styleInput(JTextField field) {
         field.setBackground(new Color(24, 36, 56));
         field.setForeground(new Color(232, 241, 255));
@@ -626,15 +671,19 @@ public class FileNestApp {
         field.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(65, 65, 65)),
                 new EmptyBorder(7, 9, 7, 9)));
+    // END: styleInput
     }
 
+    // START: darkCard - Handles the darkCard operation in the FileNest application.
     private JPanel darkCard(LayoutManager layout) {
         JPanel card = new JPanel(layout);
         card.setBackground(new Color(19, 31, 50));
         card.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(37, 55, 82)), BorderFactory.createEmptyBorder(1, 1, 1, 1)));
         return card;
+    // END: darkCard
     }
 
+    // START: applyTheme - Applies the selected dark or light theme to the GUI components.
     private void applyTheme() {
         if (frame == null) return;
         Color background = darkTheme ? new Color(11, 18, 32) : new Color(239, 245, 253);
@@ -665,6 +714,7 @@ public class FileNestApp {
             storageBar.setForeground(new Color(64, 143, 255));
         }
         frame.repaint();
+    // END: applyTheme
     }
 
     private void applyThemeTo(Component component, Color background, Color panel, Color surface,
@@ -700,6 +750,7 @@ public class FileNestApp {
         }
     }
 
+    // START: styleScrollPane - Handles the styleScrollPane operation in the FileNest application.
     private void styleScrollPane(JScrollPane scroll) {
         scroll.setBorder(BorderFactory.createEmptyBorder());
         scroll.setBackground(new Color(43, 43, 43));
@@ -708,16 +759,20 @@ public class FileNestApp {
         scroll.getVerticalScrollBar().setBackground(new Color(43, 43, 43));
         scroll.getVerticalScrollBar().setForeground(new Color(65, 145, 235));
         scroll.getHorizontalScrollBar().setBackground(new Color(43, 43, 43));
+    // END: styleScrollPane
     }
 
+    // START: JTableHeaderStyle - Handles the JTableHeaderStyle operation in the FileNest application.
     private void JTableHeaderStyle(JTable table) {
         table.getTableHeader().setBackground(new Color(37, 37, 37));
         table.getTableHeader().setForeground(new Color(165, 165, 165));
         table.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 10));
         table.getTableHeader().setPreferredSize(new Dimension(0, 34));
         table.getTableHeader().setReorderingAllowed(false);
+    // END: JTableHeaderStyle
     }
 
+    // START: buildStatus - Handles the buildStatus operation in the FileNest application.
     private JComponent buildStatus() {
         statusLabel = new JLabel("Ready");
         statusLabel.setBorder(new EmptyBorder(7, 14, 7, 14));
@@ -725,22 +780,28 @@ public class FileNestApp {
         statusLabel.setBackground(new Color(13, 22, 38));
         statusLabel.setForeground(new Color(145, 174, 211));
         return statusLabel;
+    // END: buildStatus
     }
 
+    // START: refreshAll - Refreshes the folder tree, file table, storage meter, and related GUI state.
     private void refreshAll() {
         refreshTree();
         refreshTable();
         refreshStorage();
+    // END: refreshAll
     }
 
+    // START: refreshTree - Rebuilds the visible folder tree from the in-memory N-ary tree.
     private void refreshTree() {
         DefaultMutableTreeNode root = new DefaultMutableTreeNode(new FolderRef("root", "Home"));
         addFolderNodes(root, fs.root);
         treeModel.setRoot(root);
         treeModel.reload();
         expandAll(folderTree);
+    // END: refreshTree
     }
 
+    // START: addFolderNodes - Recursively adds child folders to the Swing tree model.
     private void addFolderNodes(DefaultMutableTreeNode parent, FolderNode folder) {
         for (FsNode child : folder.sortedChildren.values()) {
             if (child instanceof FolderNode f) {
@@ -749,12 +810,16 @@ public class FileNestApp {
                 addFolderNodes(swingNode, f);
             }
         }
+    // END: addFolderNodes
     }
 
+    // START: expandAll - Handles the expandAll operation in the FileNest application.
     private void expandAll(JTree tree) {
         for (int i = 0; i < tree.getRowCount(); i++) tree.expandRow(i);
+    // END: expandAll
     }
 
+    // START: refreshTable - Loads the current folder or directly browsed PC directory into the file table.
     private void refreshTable() {
         // In PC-browse mode, read the directory before clearing the current rows.
         // File.listFiles() can temporarily return null (for example, during a
@@ -802,8 +867,10 @@ public class FileNestApp {
             }
         }
         if (previewName != null) updatePreviewPanel();
+    // END: refreshTable
     }
 
+    // START: updatePreviewPanel - Updates the preview area for the currently selected file.
     private void updatePreviewPanel() {
         int row = fileTable == null ? -1 : fileTable.getSelectedRow();
         if (row >= 0 && pcBrowsePath != null) {
@@ -872,8 +939,10 @@ public class FileNestApp {
         }
         previewHint.setText(record.physicalPath == null ? "Simulated content" : "Opens with your PC's default app");
         previewOpenButton.setVisible(true);
+    // END: updatePreviewPanel
     }
 
+    // START: refreshStorage - Recalculates logical storage usage and updates the storage meter.
     private void refreshStorage() {
         long used = fs.totalSize();
         long capacity = fs.capacityBytes;
@@ -882,8 +951,10 @@ public class FileNestApp {
                 + "     •     Files: " + fs.records.size() + "     •     Folders: " + (fs.folders.size() - 1));
         storageBar.setValue(percent);
         storageBar.setString(percent + "% used");
+    // END: refreshStorage
     }
 
+    // START: createFolder - Creates a folder in the current FileNest location.
     private void createFolder() {
         String name = JOptionPane.showInputDialog(frame, "Folder name:");
         if (name == null || name.isBlank()) return;
@@ -892,8 +963,10 @@ public class FileNestApp {
             refreshAll();
             status("Folder created.");
         } catch (RuntimeException ex) { error(ex.getMessage()); }
+    // END: createFolder
     }
 
+    // START: createFile - Creates a file record and registers its indexes and undo action.
     private void createFile() {
         JTextField name = new JTextField();
         JTextField size = new JTextField("1024");
@@ -909,8 +982,10 @@ public class FileNestApp {
             refreshAll();
             status("File created.");
         } catch (RuntimeException ex) { error(ex.getMessage()); }
+    // END: createFile
     }
 
+    // START: accessSelected - Records an access event for the selected FileNest file and updates LRU history.
     private void accessSelected() {
         FsNode node = selectedNode();
         if (!(node instanceof FileNode file)) { if (node != null) error("Select a file, not a folder."); return; }
@@ -919,8 +994,10 @@ public class FileNestApp {
         while (accessHistory.size() > 30) accessHistory.removeLast();
         refreshTable();
         status("Access recorded for " + file.name + " (LRU updated in O(1) average time).");
+    // END: accessSelected
     }
 
+    // START: previewSelected - Previews the selected supported file or opens it through the available file-opening flow.
     private void previewSelected() {
         int selectedRow = fileTable.getSelectedRow();
         if (selectedRow >= 0 && pcBrowsePath != null) {
@@ -966,6 +1043,7 @@ public class FileNestApp {
         previewPanel.setPreferredSize(new Dimension(650, 380));
         JOptionPane.showMessageDialog(frame, previewPanel, "File Preview", JOptionPane.PLAIN_MESSAGE);
         status("Previewing " + record.name + ".");
+    // END: previewSelected
     }
 
     // Lightweight heuristic scan: this is a warning aid, not a certified antivirus.
@@ -975,6 +1053,7 @@ public class FileNestApp {
     private static final Set<String> SCRIPT_EXTENSIONS = Set.of(
             ".bat", ".cmd", ".ps1", ".vbs", ".js", ".hta", ".wsf", ".sh", ".py");
 
+    // START: scanSelection - Starts the selected-file or selected-folder content scan and displays findings.
     private void scanSelection() {
         List<String> findings = new ArrayList<>();
         List<Path> cleanableScripts = new ArrayList<>();
@@ -1040,6 +1119,7 @@ public class FileNestApp {
                             ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
         }
         status("Security scan finished: " + scanned[0] + " file(s), " + findings.size() + " warning(s).");
+    // END: scanSelection
     }
 
     private void scanFileSystemNode(FsNode node, List<String> findings, List<Path> cleanableScripts,
@@ -1067,6 +1147,7 @@ public class FileNestApp {
         }
     }
 
+    // START: scanPath - Recursively scans a path and gathers findings for supported files.
     private void scanPath(Path target, List<String> findings, List<Path> cleanableScripts, int[] scanned) {
         if (Files.isRegularFile(target)) {
             scanned[0]++;
@@ -1085,8 +1166,10 @@ public class FileNestApp {
         } catch (IOException | SecurityException ex) {
             findings.add(target + " — could not fully scan: " + ex.getMessage());
         }
+    // END: scanPath
     }
 
+    // START: scanSingleFile - Reads and checks one file for the scan's configured indicators.
     private void scanSingleFile(Path path, List<String> findings, List<Path> cleanableScripts) {
         String ext = extensionOf(path.getFileName().toString());
         boolean riskyType = RISKY_EXTENSIONS.contains(ext);
@@ -1108,8 +1191,10 @@ public class FileNestApp {
                     : "potentially executable file type (" + ext + ")";
             findings.add(path + " — " + reason);
         }
+    // END: scanSingleFile
     }
 
+    // START: suspiciousLines - Checks text lines against the scan's configured suspicious-pattern rules.
     private List<String> suspiciousLines(String content) {
         List<String> matches = new ArrayList<>();
         if (content == null || content.isBlank()) return matches;
@@ -1129,13 +1214,17 @@ public class FileNestApp {
             }
         }
         return matches;
+    // END: suspiciousLines
     }
 
+    // START: extensionOf - Handles the extensionOf operation in the FileNest application.
     private String extensionOf(String name) {
         int dot = name.lastIndexOf('.');
         return dot < 0 ? "" : name.substring(dot).toLowerCase(Locale.ROOT);
+    // END: extensionOf
     }
 
+    // START: createCleanedCopies - Creates separate cleaned copies for eligible scanned scripts; it does not overwrite originals.
     private void createCleanedCopies(List<Path> scripts) {
         Path output = Path.of(System.getProperty("user.home"), "FileNest_Cleaned");
         int created = 0;
@@ -1172,8 +1261,10 @@ public class FileNestApp {
         } catch (IOException | SecurityException ex) {
             error("Could not create cleaned copies: " + ex.getMessage());
         }
+    // END: createCleanedCopies
     }
 
+    // START: importFiles - Imports selected PC files using either Copy into FileNest or Direct Access mode.
     private void importFiles() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Select files to add to FileNest");
@@ -1226,8 +1317,10 @@ public class FileNestApp {
                 failures.isEmpty() ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
         status("Import finished: " + added + " added, " + skipped + " skipped, "
                 + failures.size() + " failed.");
+    // END: importFiles
     }
 
+    // START: openPhysicalFile - Opens an imported physical file with the operating system's default application.
     private void openPhysicalFile(FileRecord record) {
         try {
             Path path = Path.of(record.physicalPath);
@@ -1248,8 +1341,10 @@ public class FileNestApp {
         } catch (IOException | UnsupportedOperationException ex) {
             error("Could not open file: " + ex.getMessage());
         }
+    // END: openPhysicalFile
     }
 
+    // START: openPcBrowserFile - Opens a file selected while browsing a real PC folder.
     private void openPcBrowserFile(File file) {
         try {
             if (!file.exists() || !file.isFile()) { error("This file is no longer available."); return; }
@@ -1264,8 +1359,10 @@ public class FileNestApp {
         } catch (IOException | UnsupportedOperationException ex) {
             error("Could not open file: " + ex.getMessage());
         }
+    // END: openPcBrowserFile
     }
 
+    // START: selectedNode - Handles the selectedNode operation in the FileNest application.
     private FsNode selectedNode() {
         int row = fileTable.getSelectedRow();
         if (row < 0) { error("Select a file or folder first."); return null; }
@@ -1278,8 +1375,10 @@ public class FileNestApp {
         String id = String.valueOf(tableModel.getValueAt(row, 5));
         try { return fs.findNode(id); }
         catch (RuntimeException ex) { error(ex.getMessage()); return null; }
+    // END: selectedNode
     }
 
+    // START: renameSelected - Renames the selected virtual FileNest entry.
     private void renameSelected() {
         FsNode node = selectedNode();
         if (node == null) return;
@@ -1290,8 +1389,10 @@ public class FileNestApp {
             refreshAll();
             status("Renamed successfully. Search and metadata indexes were updated.");
         } catch (RuntimeException ex) { error(ex.getMessage()); }
+    // END: renameSelected
     }
 
+    // START: moveSelected - Moves the selected virtual FileNest entry to another FileNest folder.
     private void moveSelected() {
         FsNode node = selectedNode();
         if (node == null) return;
@@ -1306,8 +1407,10 @@ public class FileNestApp {
             refreshAll();
             status("Moved successfully to " + fs.folderPath(destinations.get(choice)) + ".");
         } catch (RuntimeException ex) { error(ex.getMessage()); }
+    // END: moveSelected
     }
 
+    // START: deleteSelected - Deletes the selected virtual entry and records the operation for undo.
     private void deleteSelected() {
         FsNode node = selectedNode();
         if (node == null) return;
@@ -1320,8 +1423,10 @@ public class FileNestApp {
         if (!fs.folders.containsKey(currentFolderId)) currentFolderId = parentId;
         refreshAll();
         status("Deleted successfully. Use Undo to restore the complete operation.");
+    // END: deleteSelected
     }
 
+    // START: searchFiles - Runs filename prefix search using the Trie index.
     private void searchFiles() {
         String query = searchField.getText().trim();
         if (query.isEmpty()) { refreshTable(); return; }
@@ -1331,8 +1436,10 @@ public class FileNestApp {
             tableModel.addRow(new Object[]{r.name, r.physicalPath == null ? "File" : (r.managedCopy ? "PC Copy" : "PC Link"), formatBytes(r.size), formatTime(r.lastAccess), r.accessCount, r.id});
         }
         status(results.size() + " result(s) for prefix \"" + query + "\" (Trie search).");
+    // END: searchFiles
     }
 
+    // START: showCleanup - Displays least-recently-accessed cleanup suggestions without deleting files automatically.
     private void showCleanup() {
         List<FileRecord> candidates = fs.suggestUnused(30, 5);
         if (candidates.isEmpty()) {
@@ -1346,8 +1453,10 @@ public class FileNestApp {
         }
         msg.append("\nReview these files before deleting them.");
         JOptionPane.showMessageDialog(frame, msg.toString(), "Smart Cleanup", JOptionPane.INFORMATION_MESSAGE);
+    // END: showCleanup
     }
 
+    // START: showHistory - Displays the file access history in least-recently-used order.
     private void showHistory() {
         List<FileRecord> ordered = fs.lruSnapshot();
         StringBuilder b = new StringBuilder("Least recently used → Most recently used\n\n");
@@ -1356,8 +1465,10 @@ public class FileNestApp {
         b.append("\nRecent access events:\n");
         for (String event : accessHistory) b.append("• ").append(event).append('\n');
         JOptionPane.showMessageDialog(frame, b.toString(), "LRU & Access History", JOptionPane.INFORMATION_MESSAGE);
+    // END: showHistory
     }
 
+    // START: showAnalytics - Calculates and displays storage, file, folder, and duplicate analytics.
     private void showAnalytics() {
         // Analyze only the selected item. If nothing is selected, analyze the folder currently open.
         FsNode target = null;
@@ -1507,8 +1618,10 @@ public class FileNestApp {
         JOptionPane.showMessageDialog(frame, scroll, "Analysis: " + locationName,
                 JOptionPane.INFORMATION_MESSAGE);
         status("Analysis completed for " + locationName + " (" + scopedFiles.size() + " file(s)).");
+    // END: showAnalytics
     }
 
+    // START: collectAnalysisContents - Collects file and folder records recursively for analytics.
     private void collectAnalysisContents(FolderNode folder, List<FileRecord> files, List<FolderNode> folders) {
         folders.add(folder);
         for (FsNode child : folder.sortedChildren.values()) {
@@ -1519,51 +1632,66 @@ public class FileNestApp {
                 collectAnalysisContents(childFolder, files, folders);
             }
         }
+    // END: collectAnalysisContents
     }
 
+    // START: escapeHtml - Handles the escapeHtml operation in the FileNest application.
     private String escapeHtml(String value) {
         if (value == null) return "";
         return value.replace("&", "&amp;").replace("<", "&lt;")
                 .replace(">", "&gt;").replace("\"", "&quot;")
                 .replace("'", "&#39;");
+    // END: escapeHtml
     }
 
+    // START: collectEmptyFolders - Finds empty folders recursively for the analytics report.
     private void collectEmptyFolders(FolderNode folder, List<FolderNode> result) {
         if (folder != fs.root && folder.children.isEmpty()) result.add(folder);
         for (FsNode child : folder.sortedChildren.values()) {
             if (child instanceof FolderNode childFolder) collectEmptyFolders(childFolder, result);
         }
+    // END: collectEmptyFolders
     }
 
+    // START: saveSnapshot - Saves the current FileNest state to a versioned .fns snapshot.
     private void saveSnapshot() {
         JFileChooser chooser = new JFileChooser(); chooser.setSelectedFile(new java.io.File("filenest-save.fns"));
         if (chooser.showSaveDialog(frame) != JFileChooser.APPROVE_OPTION) return;
         try { fs.save(chooser.getSelectedFile()); status("Saved FileNest snapshot."); }
         catch (IOException ex) { error("Could not save: " + ex.getMessage()); }
+    // END: saveSnapshot
     }
 
+    // START: loadSnapshot - Loads and validates a .fns snapshot before replacing the current in-memory state.
     private void loadSnapshot() {
         JFileChooser chooser = new JFileChooser();
         if (chooser.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return;
         try { fs.load(chooser.getSelectedFile()); currentFolderId="root"; accessHistory.clear(); refreshAll(); status("Loaded FileNest snapshot."); }
         catch (IOException | RuntimeException ex) { error("Could not load: " + ex.getMessage()); }
+    // END: loadSnapshot
     }
 
     private void status(String text) { statusLabel.setText(text); }
     private void error(String text) { JOptionPane.showMessageDialog(frame, text, "FileNest", JOptionPane.WARNING_MESSAGE); }
+    // START: formatBytes - Handles the formatBytes operation in the FileNest application.
     private static String formatBytes(long bytes) {
         if (bytes < 1024) return bytes + " B";
         if (bytes < 1024 * 1024) return String.format(Locale.US, "%.1f KB", bytes / 1024.0);
         if (bytes < 1024L * 1024 * 1024) return String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024));
         return String.format(Locale.US, "%.1f GB", bytes / (1024.0 * 1024 * 1024));
+    // END: formatBytes
     }
+    // START: formatTime - Handles the formatTime operation in the FileNest application.
     private static String formatTime(Instant time) {
         return DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm")
                 .withZone(ZoneId.systemDefault()).format(time);
+    // END: formatTime
     }
 
+    // START: FolderRef - Handles the FolderRef operation in the FileNest application.
     private record FolderRef(String id, String name) {
         @Override public String toString() { return name; }
+    // END: FolderRef
     }
 
     // ---------------------- DSA CORE ----------------------
@@ -1584,23 +1712,31 @@ public class FileNestApp {
 
         FolderNode(String id, String name, FolderNode parent) { super(id, name, parent); }
 
+        // START: addChild - Handles the addChild operation in the FileNest application.
         void addChild(FsNode node) {
             children.put(node.name, node);
             sortedChildren.put(node.name, node);
+        // END: addChild
         }
 
+        // START: removeChild - Handles the removeChild operation in the FileNest application.
         FsNode removeChild(String name) {
             sortedChildren.remove(name);
             return children.remove(name);
+        // END: removeChild
         }
 
+        // START: clearChildren - Handles the clearChildren operation in the FileNest application.
         void clearChildren() {
             children.clear();
             sortedChildren.clear();
+        // END: clearChildren
         }
 
+        // START: addAllChildren - Handles the addAllChildren operation in the FileNest application.
         void addAllChildren(Map<String, FsNode> nodes) {
             for (FsNode node : nodes.values()) addChild(node);
+        // END: addAllChildren
         }
     }
 
@@ -1608,11 +1744,13 @@ public class FileNestApp {
         FileNode(String id, String name, FolderNode parent) { super(id, name, parent); }
     }
 
+    // START: hashContent - Calculates a SHA-256 fingerprint for in-memory text content.
     private static String hashContent(String content) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(content.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest);
         } catch (NoSuchAlgorithmException ex) { throw new IllegalStateException("SHA-256 is unavailable.", ex); }
+    // END: hashContent
     }
 
     private static class FileRecord {
@@ -1621,14 +1759,18 @@ public class FileNestApp {
         boolean managedCopy;
         long size, accessCount, version;
         Instant lastAccess;
+        // START: FileRecord - Handles the FileRecord operation in the FileNest application.
         FileRecord(String id, String name, String folderId, long size, String content) {
             this.id=id; this.name=name; this.folderId=folderId; this.size=size; this.content=content;
             this.lastAccess=Instant.now(); this.accessCount=0; this.fingerprint=hashContent(content);
+        // END: FileRecord
         }
+        // START: FileRecord - Handles the FileRecord operation in the FileNest application.
         FileRecord(String id, String name, String folderId, long size, String content, String physicalPath, boolean managedCopy, String fingerprint) {
             this(id, name, folderId, size, content);
             this.physicalPath=physicalPath; this.managedCopy=managedCopy;
             if (fingerprint != null) this.fingerprint=fingerprint;
+        // END: FileRecord
         }
     }
 
@@ -1648,12 +1790,15 @@ public class FileNestApp {
             Set<String> ids = new HashSet<>();
         }
         private final TrieNode root = new TrieNode();
+        // START: insert - Handles the insert operation in the FileNest application.
         void insert(String word, String id) {
             TrieNode n = root;
             for (char c : word.toLowerCase(Locale.ROOT).toCharArray())
                 n = n.children.computeIfAbsent(c, k -> new TrieNode());
             n.ids.add(id);
+        // END: insert
         }
+        // START: remove - Handles the remove operation in the FileNest application.
         void remove(String word, String id) {
             TrieNode n = root;
             for (char c : word.toLowerCase(Locale.ROOT).toCharArray()) {
@@ -1661,8 +1806,10 @@ public class FileNestApp {
                 if (n == null) return;
             }
             n.ids.remove(id);
+        // END: remove
         }
         void clear() { root.children.clear(); root.ids.clear(); }
+        // START: search - Handles the search operation in the FileNest application.
         Set<String> search(String prefix) {
             TrieNode n = root;
             for (char c : prefix.toLowerCase(Locale.ROOT).toCharArray()) {
@@ -1672,10 +1819,13 @@ public class FileNestApp {
             Set<String> result = new HashSet<>();
             collect(n, result);
             return result;
+        // END: search
         }
+        // START: collect - Handles the collect operation in the FileNest application.
         private void collect(TrieNode n, Set<String> out) {
             out.addAll(n.ids);
             for (TrieNode child : n.children.values()) collect(child, out);
+        // END: collect
         }
     }
 
@@ -1692,6 +1842,7 @@ public class FileNestApp {
         final Deque<Runnable> undoStack = new ArrayDeque<>();
         FileSystemManager() { folders.put(root.id, root); }
 
+        // START: seedDemoData - Handles the seedDemoData operation in the FileNest application.
         void seedDemoData() {
             FolderNode docs = createFolder("root", "Documents");
             FolderNode media = createFolder("root", "Media");
@@ -1711,8 +1862,10 @@ public class FileNestApp {
                     minHeap.add(new AccessEntry(r.id, r.lastAccess, r.version));
                 }
             }
+        // END: seedDemoData
         }
 
+        // START: createFolder - Creates a folder in the current FileNest location.
         FolderNode createFolder(String parentId, String name) {
             validateName(name);
             FolderNode parent = requireFolder(parentId);
@@ -1722,12 +1875,16 @@ public class FileNestApp {
             folders.put(folder.id, folder);
             undoStack.push(() -> { parent.removeChild(name); folders.remove(folder.id); });
             return folder;
+        // END: createFolder
         }
 
+        // START: createFile - Creates a file record and registers its indexes and undo action.
         FileRecord createFile(String folderId, String name, long size) {
             return createFile(folderId, name, size, "Simulated file content for " + UUID.randomUUID());
+        // END: createFile
         }
 
+        // START: addPhysicalFile - Handles the addPhysicalFile operation in the FileNest application.
         FileRecord addPhysicalFile(String folderId, Path source, boolean copy) throws IOException {
             Path original = source.toAbsolutePath().normalize();
             if (!Files.isRegularFile(original) || !Files.isReadable(original))
@@ -1800,12 +1957,14 @@ public class FileNestApp {
                 }
                 throw ex;
             }
+        // END: addPhysicalFile
         }
 
         /**
          * Reserves a collision-free name in storage and in the target virtual folder.
          * Files.createFile performs the reservation atomically.
          */
+        // START: reserveCopyDestination - Handles the reserveCopyDestination operation in the FileNest application.
         private Path reserveCopyDestination(Path storage, String fileName, FolderNode folder) throws IOException {
             String base = fileName;
             String extension = "";
@@ -1825,8 +1984,10 @@ public class FileNestApp {
                     // Try the next suffix without overwriting an existing stored file.
                 }
             }
+        // END: reserveCopyDestination
         }
 
+        // START: hashPhysicalFile - Calculates a SHA-256 fingerprint by reading a physical file in chunks.
         private String hashPhysicalFile(Path file) throws IOException {
             try {
                 MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -1839,8 +2000,10 @@ public class FileNestApp {
             } catch (NoSuchAlgorithmException ex) {
                 throw new IllegalStateException("SHA-256 is unavailable.", ex);
             }
+        // END: hashPhysicalFile
         }
 
+        // START: createFile - Creates a file record and registers its indexes and undo action.
         FileRecord createFile(String folderId, String name, long size, String content) {
             validateName(name);
             if (content == null) content = "";
@@ -1855,8 +2018,10 @@ public class FileNestApp {
             registerFile(r, node);
             undoStack.push(() -> { folder.removeChild(name); unregisterFile(r); detachedRecords.remove(r.id); });
             return r;
+        // END: createFile
         }
 
+        // START: renameNode - Renames a file or folder and updates the affected indexes.
         void renameNode(String id, String newName) {
             validateName(newName);
             FsNode node = findNode(id);
@@ -1870,8 +2035,10 @@ public class FileNestApp {
             parent.addChild(node);
             if (r != null) { nameIndex.remove(oldName, id); r.name = newName; nameIndex.insert(newName, id); }
             undoStack.push(() -> renameInternal(node, oldName));
+        // END: renameNode
         }
 
+        // START: moveNode - Moves a file or folder while preventing invalid folder cycles.
         void moveNode(String id, String destinationFolderId) {
             FsNode node = findNode(id);
             if (node == root) throw new IllegalArgumentException("The Home folder cannot be moved.");
@@ -1884,8 +2051,10 @@ public class FileNestApp {
             FolderNode oldParent = node.parent;
             moveInternal(node, destination);
             undoStack.push(() -> moveInternal(node, oldParent));
+        // END: moveNode
         }
 
+        // START: isDescendantOrSame - Handles the isDescendantOrSame operation in the FileNest application.
         private boolean isDescendantOrSame(FolderNode candidate, FolderNode ancestor) {
             FolderNode current = candidate;
             while (current != null) {
@@ -1893,8 +2062,10 @@ public class FileNestApp {
                 current = current.parent;
             }
             return false;
+        // END: isDescendantOrSame
         }
 
+        // START: findNode - Handles the findNode operation in the FileNest application.
         private FsNode findNode(String id) {
             if (root.id.equals(id)) return root;
             FolderNode folder = folders.get(id);
@@ -1904,8 +2075,10 @@ public class FileNestApp {
             FsNode node = parent.children.get(record.name);
             if (node == null) throw new IllegalArgumentException("File system index is inconsistent.");
             return node;
+        // END: findNode
         }
 
+        // START: folderPath - Handles the folderPath operation in the FileNest application.
         String folderPath(FolderNode folder) {
             Deque<String> names = new ArrayDeque<>();
             FolderNode current = folder;
@@ -1914,8 +2087,10 @@ public class FileNestApp {
                 current = current.parent;
             }
             return String.join("/", names);
+        // END: folderPath
         }
 
+        // START: access - Updates last-access time, access count, LRU order, and heap state for a file.
         void access(String id) {
             FileRecord r = requireRecord(id);
             Instant oldTime = r.lastAccess;
@@ -1934,10 +2109,12 @@ public class FileNestApp {
                 for (String fileId : oldOrder) if (records.containsKey(fileId)) lru.put(fileId, Boolean.TRUE);
                 touchHeap(r);
             });
+        // END: access
         }
 
         void deleteFile(String id) { deleteNode(id); }
 
+        // START: deleteNode - Removes a file or folder subtree from the virtual tree and stores an undo action.
         void deleteNode(String id) {
             FsNode node = findNode(id);
             if (node == root) throw new IllegalArgumentException("The Home folder cannot be deleted.");
@@ -1968,25 +2145,31 @@ public class FileNestApp {
                 for (String fileId : records.keySet()) if (!lru.containsKey(fileId)) lru.put(fileId, Boolean.TRUE);
                 detachedRecords.keySet().removeAll(subtree.stream().filter(n -> n instanceof FileNode).map(n -> n.id).toList());
             });
+        // END: deleteNode
         }
 
         // Records are retained only while a delete is undoable; the undo closure restores their indexes.
         private final Map<String, FileRecord> detachedRecords = new HashMap<>();
 
+        // START: collectNodes - Handles the collectNodes operation in the FileNest application.
         private void collectNodes(FsNode node, List<FsNode> out) {
             out.add(node);
             if (node instanceof FolderNode folder)
                 for (FsNode child : folder.sortedChildren.values()) collectNodes(child, out);
+        // END: collectNodes
         }
 
+        // START: registerFile - Adds a file to the primary records map, Trie, LRU map, duplicate index, and heap.
         private void registerFile(FileRecord r, FileNode node) {
             records.put(r.id, r);
             nameIndex.insert(r.name, r.id);
             lru.put(r.id, Boolean.TRUE);
             duplicateIndex.computeIfAbsent(r.fingerprint, k -> new HashSet<>()).add(r.id);
             touchHeap(r);
+        // END: registerFile
         }
 
+        // START: unregisterFile - Removes a file from active indexes and retains its record for a possible undo.
         private void unregisterFile(FileRecord r) {
             records.remove(r.id);
             nameIndex.remove(r.name, r.id);
@@ -1994,8 +2177,10 @@ public class FileNestApp {
             Set<String> ids = duplicateIndex.get(r.fingerprint);
             if (ids != null) { ids.remove(r.id); if (ids.isEmpty()) duplicateIndex.remove(r.fingerprint); }
             detachedRecords.put(r.id, r);
+        // END: unregisterFile
         }
 
+        // START: renameInternal - Performs the internal tree and index updates required by a rename or undo.
         private void renameInternal(FsNode node, String newName) {
             FolderNode parent = node.parent;
             parent.removeChild(node.name);
@@ -2005,8 +2190,10 @@ public class FileNestApp {
                 FileRecord r = records.get(node.id);
                 if (r != null) { nameIndex.remove(r.name, r.id); r.name = newName; nameIndex.insert(newName, r.id); }
             }
+        // END: renameInternal
         }
 
+        // START: moveInternal - Performs the internal tree and metadata updates required by a move or undo.
         private void moveInternal(FsNode node, FolderNode destination) {
             node.parent.removeChild(node.name);
             destination.addChild(node);
@@ -2015,36 +2202,46 @@ public class FileNestApp {
                 FileRecord r = records.get(node.id);
                 if (r != null) r.folderId = destination.id;
             }
+        // END: moveInternal
         }
 
         void undo() { if (!undoStack.isEmpty()) undoStack.pop().run(); }
         boolean canUndo() { return !undoStack.isEmpty(); }
 
+        // START: countFiles - Handles the countFiles operation in the FileNest application.
         int countFiles(FolderNode folder) {
             int count = 0;
             for (FsNode n : folder.sortedChildren.values()) count += n instanceof FileNode ? 1 : countFiles((FolderNode)n);
             return count;
+        // END: countFiles
         }
+        // START: countFolders - Handles the countFolders operation in the FileNest application.
         int countFolders(FolderNode folder) {
             int count = 0;
             for (FsNode n : folder.sortedChildren.values()) if (n instanceof FolderNode f) count += 1 + countFolders(f);
             return count;
+        // END: countFolders
         }
 
+        // START: findDuplicates - Groups exact-content matches using SHA-256 fingerprints.
         List<FileRecord> findDuplicates() {
             List<FileRecord> result = new ArrayList<>();
             for (Set<String> ids : duplicateIndex.values()) if (ids.size() > 1)
                 for (String id : ids) result.add(records.get(id));
             result.sort(Comparator.comparing(r -> r.fingerprint));
             return result;
+        // END: findDuplicates
         }
 
+        // START: lruSnapshot - Returns file records in least-recently-used order.
         List<FileRecord> lruSnapshot() {
             List<FileRecord> result = new ArrayList<>();
             for (String id : lru.keySet()) { FileRecord r = records.get(id); if (r != null) result.add(r); }
             return result;
+        // END: lruSnapshot
         }
 
+        // START: save - Serializes the folder tree, file metadata, and LRU order into a snapshot.
         void save(File file) throws IOException {
             try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(file)))) {
                 out.writeUTF("FILENEST"); out.writeInt(4); out.writeLong(capacityBytes);
@@ -2052,7 +2249,9 @@ public class FileNestApp {
                 out.writeInt(lru.size());
                 for (String id : lru.keySet()) out.writeUTF(id);
             }
+        // END: save
         }
+        // START: writeFolder - Writes a folder and its descendants recursively to the snapshot stream.
         private void writeFolder(DataOutputStream out, FolderNode folder) throws IOException {
             out.writeUTF(folder.id); out.writeUTF(folder.name); out.writeInt(folder.children.size());
             for (FsNode node : folder.sortedChildren.values()) {
@@ -2066,7 +2265,9 @@ public class FileNestApp {
                     out.writeBoolean(r.managedCopy);
                 }
             }
+        // END: writeFolder
         }
+        // START: load - Validates and restores a saved snapshot, then rebuilds indexes.
         void load(File file) throws IOException {
             FileSystemManager parsed = new FileSystemManager();
             try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
@@ -2101,22 +2302,30 @@ public class FileNestApp {
                 touchHeap(r);
             }
             undoStack.clear(); detachedRecords.clear();
+        // END: load
         }
+        // START: writeContent - Handles the writeContent operation in the FileNest application.
         private void writeContent(DataOutputStream out, String content) throws IOException {
             byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
             if (bytes.length > 64 * 1024 * 1024) throw new IOException("A simulated file's content exceeds the 64 MiB save limit.");
             out.writeInt(bytes.length); out.write(bytes);
+        // END: writeContent
         }
+        // START: readContent - Handles the readContent operation in the FileNest application.
         private String readContent(DataInputStream in) throws IOException {
             int length = in.readInt();
             if (length < 0 || length > 64 * 1024 * 1024) throw new IOException("Invalid content length in save file.");
             byte[] bytes = new byte[length]; in.readFully(bytes);
             return new String(bytes, StandardCharsets.UTF_8);
+        // END: readContent
         }
+        // START: readFolder - Reads a folder's children from the snapshot stream.
         private void readFolder(DataInputStream in, FolderNode folder, int version) throws IOException {
             int count = in.readInt();
             readFolderEntries(in, folder, count, version);
+        // END: readFolder
         }
+        // START: readFolderEntries - Reconstructs folder and file entries and registers their indexes while loading.
         private void readFolderEntries(DataInputStream in, FolderNode folder, int count, int version) throws IOException {
             for (int i=0; i<count; i++) {
                 boolean isFolder = in.readBoolean();
@@ -2139,12 +2348,16 @@ public class FileNestApp {
                     registerFile(r,node);
                 }
             }
+        // END: readFolderEntries
         }
+        // START: reset - Clears the current in-memory indexes and undo state before loading a snapshot.
         private void reset() {
             root.clearChildren(); folders.clear(); folders.put(root.id,root); records.clear();
             nameIndex.clear(); lru.clear(); minHeap.clear(); duplicateIndex.clear(); detachedRecords.clear(); undoStack.clear();
+        // END: reset
         }
 
+        // START: searchPrefix - Uses the Trie index to find file records whose names match a prefix.
         List<FileRecord> searchPrefix(String prefix) {
             Set<String> ids = nameIndex.search(prefix);
             List<FileRecord> result = new ArrayList<>();
@@ -2154,8 +2367,10 @@ public class FileNestApp {
             }
             result.sort(Comparator.comparing(r -> r.name.toLowerCase(Locale.ROOT)));
             return result;
+        // END: searchPrefix
         }
 
+        // START: suggestUnused - Uses the timestamp min-heap to suggest files older than the requested age.
         List<FileRecord> suggestUnused(int minAgeDays, int limit) {
             Instant cutoff = Instant.now().minus(Duration.ofDays(minAgeDays));
             List<FileRecord> result = new ArrayList<>();
@@ -2169,17 +2384,23 @@ public class FileNestApp {
             }
             minHeap.addAll(deferred);
             return result;
+        // END: suggestUnused
         }
 
+        // START: touchHeap - Adds a versioned access-time entry to the priority queue.
         private void touchHeap(FileRecord r) {
             minHeap.add(new AccessEntry(r.id, r.lastAccess, r.version));
+        // END: touchHeap
         }
 
+        // START: folderSizes - Handles the folderSizes operation in the FileNest application.
         Map<String, Long> folderSizes() {
             Map<String, Long> sizes = new HashMap<>();
             calculateFolderSizes(root, sizes);
             return sizes;
+        // END: folderSizes
         }
+        // START: calculateFolderSizes - Calculates folder sizes recursively and stores each result by folder ID.
         private long calculateFolderSizes(FolderNode folder, Map<String, Long> sizes) {
             long total = 0;
             for (FsNode child : folder.sortedChildren.values()) {
@@ -2188,8 +2409,10 @@ public class FileNestApp {
             }
             sizes.put(folder.id, total);
             return total;
+        // END: calculateFolderSizes
         }
 
+        // START: folderSize - Calculates the total logical size of a folder and all descendants.
         long folderSize(FolderNode folder) {
             long total = 0;
             for (FsNode child : folder.sortedChildren.values()) {
@@ -2197,28 +2420,37 @@ public class FileNestApp {
                 else if (child instanceof FolderNode f) total += folderSize(f);
             }
             return total;
+        // END: folderSize
         }
         long totalSize() { return folderSize(root); }
 
+        // START: requireFolder - Handles the requireFolder operation in the FileNest application.
         private FolderNode requireFolder(String id) {
             FolderNode f = folders.get(id);
             if (f == null) throw new IllegalArgumentException("Folder not found.");
             return f;
+        // END: requireFolder
         }
+        // START: requireRecord - Handles the requireRecord operation in the FileNest application.
         private FileRecord requireRecord(String id) {
             FileRecord r = records.get(id);
             if (r == null) throw new IllegalArgumentException("File not found.");
             return r;
+        // END: requireRecord
         }
+        // START: hashContent - Calculates a SHA-256 fingerprint for in-memory text content.
         private static String hashContent(String content) {
             try {
                 byte[] digest = MessageDigest.getInstance("SHA-256").digest(content.getBytes(StandardCharsets.UTF_8));
                 return HexFormat.of().formatHex(digest);
             } catch (NoSuchAlgorithmException ex) { throw new IllegalStateException("SHA-256 is unavailable.", ex); }
+        // END: hashContent
         }
+        // START: validateName - Validates a file or folder name before it is added or renamed.
         private static void validateName(String name) {
             if (name == null || name.isBlank() || name.contains("/") || name.contains("\\"))
                 throw new IllegalArgumentException("Enter a valid name (without / or \\).");
+        // END: validateName
         }
     }
 }
