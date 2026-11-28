@@ -49,7 +49,7 @@ The supplied \`run.bat\` and \`run.sh\` scripts prefer \`JAVA_HOME\` when it is 
 From the FileNest project directory:
 
 ~~~cmd
-javac --release 17 -Xlint:all -d out src/filenest/FileNestApp.java
+javac --release 17 -Xlint:all -d out src/filenest/FileNestApp.java src/filenest/FileNestGUI.java
 java -cp out filenest.FileNestApp
 ~~~
 
