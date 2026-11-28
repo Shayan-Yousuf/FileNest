@@ -51,7 +51,8 @@ public class FileNestApp {
     // END: main
     }
 
-    // START: show - Builds and displays the complete FileNest desktop window. GUI START/END.
+    // ==================== GUI START ====================
+    // START: show - Builds and displays the complete FileNest desktop window.
     private void show() {
         fs.seedDemoData();
         frame = new JFrame("FileNest | Simulated File Manager");
@@ -80,6 +81,7 @@ public class FileNestApp {
         });
     // END: show
     }
+    // ==================== GUI END ====================
 
     // START: buildHeader - Builds the top header, navigation path, prefix-search controls, and theme switch.
     private JComponent buildHeader() {
