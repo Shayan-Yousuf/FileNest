@@ -11,7 +11,8 @@
         "-Xlint:all",
         "-d",
         "out",
-        "src/filenest/FileNestApp.java"
+        "src/filenest/FileNestApp.java",
+        "src/filenest/FileNestGUI.java"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
